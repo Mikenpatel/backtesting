@@ -1,22 +1,29 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Indian Options Paper Trading API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: market
+    description: Market data (simulated NSE/BSE)
+  - name: trades
+    description: Paper trade management
+  - name: strategies
+    description: Auto-strategy configuration and execution
+  - name: dashboard
+    description: Portfolio summary and analytics
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +31,398 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /market/quote:
+    get:
+      operationId: getMarketQuote
+      tags: [market]
+      summary: Get current market quote for an underlying
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [NIFTY, BANKNIFTY, FINNIFTY]
+      responses:
+        "200":
+          description: Market quote
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketQuote"
+
+  /market/option-chain:
+    get:
+      operationId: getOptionChain
+      tags: [market]
+      summary: Get option chain for an underlying and expiry
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [NIFTY, BANKNIFTY, FINNIFTY]
+        - name: expiry
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Option chain data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptionChain"
+
+  /market/expiries:
+    get:
+      operationId: getExpiries
+      tags: [market]
+      summary: Get available expiry dates for an underlying
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [NIFTY, BANKNIFTY, FINNIFTY]
+      responses:
+        "200":
+          description: List of expiry dates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpiriesResponse"
+
+  /trades:
+    get:
+      operationId: listTrades
+      tags: [trades]
+      summary: List all paper trades
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [open, closed, all]
+        - name: strategy
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of trades
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Trade"
+
+    post:
+      operationId: createTrade
+      tags: [trades]
+      summary: Create a manual paper trade
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTradeBody"
+      responses:
+        "201":
+          description: Trade created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trade"
+
+  /trades/{id}:
+    get:
+      operationId: getTrade
+      tags: [trades]
+      summary: Get a single trade with all legs
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Trade details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trade"
+        "404":
+          description: Not found
+
+    patch:
+      operationId: updateTrade
+      tags: [trades]
+      summary: Update a trade (e.g. close it at market)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTradeBody"
+      responses:
+        "200":
+          description: Updated trade
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trade"
+        "404":
+          description: Not found
+
+    delete:
+      operationId: deleteTrade
+      tags: [trades]
+      summary: Delete a trade
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /trades/{id}/close:
+    post:
+      operationId: closeTrade
+      tags: [trades]
+      summary: Close a trade at current market price
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Closed trade with realized P&L
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trade"
+
+  /trades/refresh-pnl:
+    post:
+      operationId: refreshAllPnl
+      tags: [trades]
+      summary: Refresh P&L for all open trades with latest market prices
+      responses:
+        "200":
+          description: Refreshed count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshPnlResponse"
+
+  /strategies:
+    get:
+      operationId: listStrategies
+      tags: [strategies]
+      summary: List configured auto-strategies
+      responses:
+        "200":
+          description: List of strategies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Strategy"
+
+    post:
+      operationId: createStrategy
+      tags: [strategies]
+      summary: Create a new auto-strategy configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStrategyBody"
+      responses:
+        "201":
+          description: Strategy created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Strategy"
+
+  /strategies/{id}:
+    get:
+      operationId: getStrategy
+      tags: [strategies]
+      summary: Get strategy details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Strategy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Strategy"
+        "404":
+          description: Not found
+
+    patch:
+      operationId: updateStrategy
+      tags: [strategies]
+      summary: Update strategy configuration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStrategyBody"
+      responses:
+        "200":
+          description: Updated strategy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Strategy"
+
+    delete:
+      operationId: deleteStrategy
+      tags: [strategies]
+      summary: Delete a strategy
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /strategies/{id}/execute:
+    post:
+      operationId: executeStrategy
+      tags: [strategies]
+      summary: Manually trigger a strategy execution (places trade now)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "201":
+          description: Trade placed from strategy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trade"
+
+  /strategies/{id}/toggle:
+    post:
+      operationId: toggleStrategy
+      tags: [strategies]
+      summary: Enable or disable auto-execution of a strategy
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated strategy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Strategy"
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get overall portfolio summary with totals and win stats
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/pnl-chart:
+    get:
+      operationId: getPnlChart
+      tags: [dashboard]
+      summary: Get daily P&L chart data for the last 30 days
+      responses:
+        "200":
+          description: P&L chart data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PnlChartPoint"
+
+  /dashboard/strategy-breakdown:
+    get:
+      operationId: getStrategyBreakdown
+      tags: [dashboard]
+      summary: Get P&L breakdown by strategy type
+      responses:
+        "200":
+          description: Strategy breakdown
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StrategyBreakdown"
+
+  /dashboard/recent-activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Get recent trade activity feed (last 10 events)
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityEvent"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +433,507 @@ components:
       required:
         - status
 
+    MarketQuote:
+      type: object
+      properties:
+        symbol:
+          type: string
+        ltp:
+          type: number
+        open:
+          type: number
+        high:
+          type: number
+        low:
+          type: number
+        change:
+          type: number
+        changePct:
+          type: number
+        vix:
+          type: number
+        timestamp:
+          type: string
+      required:
+        - symbol
+        - ltp
+        - open
+        - high
+        - low
+        - change
+        - changePct
+        - vix
+        - timestamp
+
+    OptionStrike:
+      type: object
+      properties:
+        strike:
+          type: number
+        callLtp:
+          type: number
+        callOi:
+          type: number
+        callVolume:
+          type: number
+        callIv:
+          type: number
+        callDelta:
+          type: number
+        callTheta:
+          type: number
+        callVega:
+          type: number
+        putLtp:
+          type: number
+        putOi:
+          type: number
+        putVolume:
+          type: number
+        putIv:
+          type: number
+        putDelta:
+          type: number
+        putTheta:
+          type: number
+        putVega:
+          type: number
+      required:
+        - strike
+        - callLtp
+        - callOi
+        - callVolume
+        - callIv
+        - callDelta
+        - callTheta
+        - callVega
+        - putLtp
+        - putOi
+        - putVolume
+        - putIv
+        - putDelta
+        - putTheta
+        - putVega
+
+    OptionChain:
+      type: object
+      properties:
+        symbol:
+          type: string
+        expiry:
+          type: string
+        underlyingLtp:
+          type: number
+        atmStrike:
+          type: number
+        strikes:
+          type: array
+          items:
+            $ref: "#/components/schemas/OptionStrike"
+      required:
+        - symbol
+        - expiry
+        - underlyingLtp
+        - atmStrike
+        - strikes
+
+    ExpiriesResponse:
+      type: object
+      properties:
+        symbol:
+          type: string
+        expiries:
+          type: array
+          items:
+            type: string
+      required:
+        - symbol
+        - expiries
+
+    TradeLeg:
+      type: object
+      properties:
+        id:
+          type: integer
+        tradeId:
+          type: integer
+        symbol:
+          type: string
+        optionType:
+          type: string
+          enum: [CE, PE]
+        strike:
+          type: number
+        expiry:
+          type: string
+        action:
+          type: string
+          enum: [BUY, SELL]
+        quantity:
+          type: integer
+        entryPrice:
+          type: number
+        exitPrice:
+          type: ["number", "null"]
+        currentPrice:
+          type: number
+        lotSize:
+          type: integer
+        createdAt:
+          type: string
+      required:
+        - id
+        - tradeId
+        - symbol
+        - optionType
+        - strike
+        - expiry
+        - action
+        - quantity
+        - entryPrice
+        - currentPrice
+        - lotSize
+        - createdAt
+
+    Trade:
+      type: object
+      properties:
+        id:
+          type: integer
+        strategyType:
+          type: string
+          enum: [IRON_CONDOR, CALENDAR_SPREAD, INTRADAY_EXPIRY, MANUAL]
+        strategyFrequency:
+          type: ["string", "null"]
+          enum: [WEEKLY, BIWEEKLY, MONTHLY, null]
+        underlying:
+          type: string
+          enum: [NIFTY, BANKNIFTY, FINNIFTY]
+        status:
+          type: string
+          enum: [open, closed]
+        entryTime:
+          type: string
+        exitTime:
+          type: ["string", "null"]
+        entryUnderlyingPrice:
+          type: number
+        exitUnderlyingPrice:
+          type: ["number", "null"]
+        unrealizedPnl:
+          type: number
+        realizedPnl:
+          type: ["number", "null"]
+        maxProfit:
+          type: ["number", "null"]
+        maxLoss:
+          type: ["number", "null"]
+        notes:
+          type: ["string", "null"]
+        legs:
+          type: array
+          items:
+            $ref: "#/components/schemas/TradeLeg"
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - strategyType
+        - underlying
+        - status
+        - entryTime
+        - entryUnderlyingPrice
+        - unrealizedPnl
+        - legs
+        - createdAt
+        - updatedAt
+
+    CreateTradeBody:
+      type: object
+      properties:
+        strategyType:
+          type: string
+          enum: [IRON_CONDOR, CALENDAR_SPREAD, INTRADAY_EXPIRY, MANUAL]
+        strategyFrequency:
+          type: ["string", "null"]
+          enum: [WEEKLY, BIWEEKLY, MONTHLY, null]
+        underlying:
+          type: string
+          enum: [NIFTY, BANKNIFTY, FINNIFTY]
+        notes:
+          type: ["string", "null"]
+        legs:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateTradeLegBody"
+      required:
+        - strategyType
+        - underlying
+        - legs
+
+    CreateTradeLegBody:
+      type: object
+      properties:
+        symbol:
+          type: string
+        optionType:
+          type: string
+          enum: [CE, PE]
+        strike:
+          type: number
+        expiry:
+          type: string
+        action:
+          type: string
+          enum: [BUY, SELL]
+        quantity:
+          type: integer
+        entryPrice:
+          type: number
+        lotSize:
+          type: integer
+      required:
+        - symbol
+        - optionType
+        - strike
+        - expiry
+        - action
+        - quantity
+        - entryPrice
+        - lotSize
+
+    UpdateTradeBody:
+      type: object
+      properties:
+        notes:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [open, closed]
+
+    RefreshPnlResponse:
+      type: object
+      properties:
+        refreshed:
+          type: integer
+        message:
+          type: string
+      required:
+        - refreshed
+        - message
+
+    Strategy:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        strategyType:
+          type: string
+          enum: [IRON_CONDOR, CALENDAR_SPREAD, INTRADAY_EXPIRY]
+        underlying:
+          type: string
+          enum: [NIFTY, BANKNIFTY, FINNIFTY]
+        frequency:
+          type: string
+          enum: [WEEKLY, BIWEEKLY, MONTHLY, INTRADAY]
+        isActive:
+          type: boolean
+        lotMultiplier:
+          type: integer
+        deltaTarget:
+          type: ["number", "null"]
+        wingWidth:
+          type: ["integer", "null"]
+        stopLossPct:
+          type: ["number", "null"]
+        targetProfitPct:
+          type: ["number", "null"]
+        entryTimeIst:
+          type: ["string", "null"]
+        exitTimeIst:
+          type: ["string", "null"]
+        lastExecutedAt:
+          type: ["string", "null"]
+        totalTradesPlaced:
+          type: integer
+        totalPnl:
+          type: number
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - strategyType
+        - underlying
+        - frequency
+        - isActive
+        - lotMultiplier
+        - totalTradesPlaced
+        - totalPnl
+        - createdAt
+
+    CreateStrategyBody:
+      type: object
+      properties:
+        name:
+          type: string
+        strategyType:
+          type: string
+          enum: [IRON_CONDOR, CALENDAR_SPREAD, INTRADAY_EXPIRY]
+        underlying:
+          type: string
+          enum: [NIFTY, BANKNIFTY, FINNIFTY]
+        frequency:
+          type: string
+          enum: [WEEKLY, BIWEEKLY, MONTHLY, INTRADAY]
+        lotMultiplier:
+          type: integer
+        deltaTarget:
+          type: ["number", "null"]
+        wingWidth:
+          type: ["integer", "null"]
+        stopLossPct:
+          type: ["number", "null"]
+        targetProfitPct:
+          type: ["number", "null"]
+        entryTimeIst:
+          type: ["string", "null"]
+        exitTimeIst:
+          type: ["string", "null"]
+      required:
+        - name
+        - strategyType
+        - underlying
+        - frequency
+        - lotMultiplier
+
+    UpdateStrategyBody:
+      type: object
+      properties:
+        name:
+          type: string
+        isActive:
+          type: boolean
+        lotMultiplier:
+          type: integer
+        deltaTarget:
+          type: ["number", "null"]
+        wingWidth:
+          type: ["integer", "null"]
+        stopLossPct:
+          type: ["number", "null"]
+        targetProfitPct:
+          type: ["number", "null"]
+        entryTimeIst:
+          type: ["string", "null"]
+        exitTimeIst:
+          type: ["string", "null"]
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalUnrealizedPnl:
+          type: number
+        totalRealizedPnl:
+          type: number
+        totalPnl:
+          type: number
+        openTrades:
+          type: integer
+        closedTrades:
+          type: integer
+        winningTrades:
+          type: integer
+        losingTrades:
+          type: integer
+        winRate:
+          type: number
+        avgWin:
+          type: number
+        avgLoss:
+          type: number
+        activeStrategies:
+          type: integer
+        niftyLtp:
+          type: number
+        bankniftyLtp:
+          type: number
+        vix:
+          type: number
+        todayPnl:
+          type: number
+      required:
+        - totalUnrealizedPnl
+        - totalRealizedPnl
+        - totalPnl
+        - openTrades
+        - closedTrades
+        - winningTrades
+        - losingTrades
+        - winRate
+        - avgWin
+        - avgLoss
+        - activeStrategies
+        - niftyLtp
+        - bankniftyLtp
+        - vix
+        - todayPnl
+
+    PnlChartPoint:
+      type: object
+      properties:
+        date:
+          type: string
+        pnl:
+          type: number
+        cumulativePnl:
+          type: number
+      required:
+        - date
+        - pnl
+        - cumulativePnl
+
+    StrategyBreakdown:
+      type: object
+      properties:
+        strategyType:
+          type: string
+        trades:
+          type: integer
+        pnl:
+          type: number
+        winRate:
+          type: number
+      required:
+        - strategyType
+        - trades
+        - pnl
+        - winRate
+
+    ActivityEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [trade_opened, trade_closed, strategy_executed, pnl_updated]
+        tradeId:
+          type: ["integer", "null"]
+        strategyId:
+          type: ["integer", "null"]
+        message:
+          type: string
+        pnl:
+          type: ["number", "null"]
+        timestamp:
+          type: string
+      required:
+        - id
+        - type
+        - message
+        - timestamp
