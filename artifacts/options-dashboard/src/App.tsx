@@ -8,6 +8,7 @@ import Trades from "@/pages/Trades";
 import NewTrade from "@/pages/NewTrade";
 import Strategies from "@/pages/Strategies";
 import Market from "@/pages/Market";
+import PnlStatement from "@/pages/PnlStatement";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -28,6 +29,7 @@ function Router() {
         <Route path="/trades" component={Trades} />
         <Route path="/strategies" component={Strategies} />
         <Route path="/market" component={Market} />
+        <Route path="/pnl" component={PnlStatement} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

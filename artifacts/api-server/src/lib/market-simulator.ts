@@ -1,15 +1,24 @@
 import { logger } from "./logger";
 
-const LOT_SIZES: Record<string, number> = {
-  NIFTY: 25,
+export const LOT_SIZES: Record<string, number> = {
+  NIFTY: 75,
   BANKNIFTY: 15,
-  FINNIFTY: 40,
+  FINNIFTY: 65,
+  SENSEX: 10,
+};
+
+const STRIKE_INTERVALS: Record<string, number> = {
+  NIFTY: 50,
+  BANKNIFTY: 100,
+  FINNIFTY: 50,
+  SENSEX: 100,
 };
 
 const BASE_PRICES: Record<string, number> = {
   NIFTY: 24350,
   BANKNIFTY: 52800,
   FINNIFTY: 23900,
+  SENSEX: 80200,
 };
 
 const BASE_VIX = 14.5;
@@ -38,13 +47,11 @@ function getDailyMovement(symbol: string): number {
 export function getLtp(symbol: string): number {
   const base = BASE_PRICES[symbol] ?? 24000;
   const dailyMove = getDailyMovement(symbol);
-
-  const elapsed = getElapsedMinutes();
   const intraMin = getElapsedMinutes();
   const noiseSeed = Math.floor(intraMin / 5);
-
   const noise = (seededRandom(noiseSeed * 17 + symbol.charCodeAt(0)) - 0.5) * 0.004;
-  return Math.round((base * (1 + dailyMove + noise)) / 5) * 5;
+  const interval = STRIKE_INTERVALS[symbol] ?? 50;
+  return Math.round((base * (1 + dailyMove + noise)) / interval) * interval;
 }
 
 export function getVix(): number {
@@ -81,20 +88,23 @@ export function getMarketQuote(symbol: string) {
 export function getExpiries(symbol: string): string[] {
   const expiries: string[] = [];
   const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth();
 
-  for (let i = 0; i < 12; i++) {
-    const d = new Date(year, month, today.getDate() + i);
-    if (d.getDay() === 4) {
+  const isFriday = symbol === "SENSEX";
+  const targetDay = isFriday ? 5 : 4;
+
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
+    if (d.getDay() === targetDay) {
       expiries.push(formatExpiry(d));
-      if (expiries.length >= 3) break;
+      if (expiries.length >= 4) break;
     }
   }
 
-  const monthlyExpiries = getMonthlyExpiries(today);
-  for (const e of monthlyExpiries) {
-    if (!expiries.includes(e)) expiries.push(e);
+  if (symbol !== "SENSEX") {
+    const monthlyExpiries = getMonthlyExpiries(today);
+    for (const e of monthlyExpiries) {
+      if (!expiries.includes(e)) expiries.push(e);
+    }
   }
 
   return expiries.slice(0, 6);
@@ -116,11 +126,10 @@ function getLastThursdayOfMonth(year: number, month: number, yearOffset = 0): Da
   const lastDay = new Date(adjYear, month + 1, 0);
   const dow = lastDay.getDay();
   const offset = (dow >= 4) ? dow - 4 : dow + 3;
-  const d = new Date(adjYear, month, lastDay.getDate() - offset);
-  return d;
+  return new Date(adjYear, month, lastDay.getDate() - offset);
 }
 
-function formatExpiry(d: Date): string {
+export function formatExpiry(d: Date): string {
   const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
   const day = String(d.getDate()).padStart(2, "0");
   const mon = months[d.getMonth()];
@@ -128,20 +137,25 @@ function formatExpiry(d: Date): string {
   return `${day}${mon}${yr}`;
 }
 
+export function parseExpiryToDate(expiry: string): Date {
+  const months: Record<string, number> = {
+    JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5,
+    JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11,
+  };
+  const day = parseInt(expiry.slice(0, 2), 10);
+  const mon = expiry.slice(2, 5).toUpperCase();
+  const yr = 2000 + parseInt(expiry.slice(5, 7), 10);
+  return new Date(yr, months[mon] ?? 0, day, 15, 30, 0);
+}
+
 function blackScholes(S: number, K: number, T: number, r: number, sigma: number, isCall: boolean): number {
   if (T <= 0) return Math.max(0, isCall ? S - K : K - S);
-
   const d1 = (Math.log(S / K) + (r + (sigma * sigma) / 2) * T) / (sigma * Math.sqrt(T));
   const d2 = d1 - sigma * Math.sqrt(T);
-
   const nd1 = normCdf(isCall ? d1 : -d1);
   const nd2 = normCdf(isCall ? d2 : -d2);
-
-  if (isCall) {
-    return S * nd1 - K * Math.exp(-r * T) * nd2;
-  } else {
-    return K * Math.exp(-r * T) * nd2 - S * nd1;
-  }
+  if (isCall) return S * nd1 - K * Math.exp(-r * T) * nd2;
+  return K * Math.exp(-r * T) * nd2 - S * nd1;
 }
 
 function normCdf(x: number): number {
@@ -164,7 +178,6 @@ function getTheta(S: number, K: number, T: number, r: number, sigma: number, isC
   if (T <= 0) return 0;
   const d1 = (Math.log(S / K) + (r + (sigma * sigma) / 2) * T) / (sigma * Math.sqrt(T));
   const d2 = d1 - sigma * Math.sqrt(T);
-  const nd1 = normCdf(d1);
   const phid1 = Math.exp(-d1 * d1 / 2) / Math.sqrt(2 * Math.PI);
   let theta: number;
   if (isCall) {
@@ -182,20 +195,10 @@ function getVega(S: number, K: number, T: number, r: number, sigma: number): num
   return Math.round(S * phid1 * Math.sqrt(T) * 100) / 100 / 100;
 }
 
-function parseExpiryToDate(expiry: string): Date {
-  const months: Record<string, number> = {
-    JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5,
-    JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11,
-  };
-  const day = parseInt(expiry.slice(0, 2), 10);
-  const mon = expiry.slice(2, 5).toUpperCase();
-  const yr = 2000 + parseInt(expiry.slice(5, 7), 10);
-  return new Date(yr, months[mon] ?? 0, day, 15, 30, 0);
-}
-
 export function getOptionChain(symbol: string, expiry: string) {
   const S = getLtp(symbol);
-  const atmRaw = Math.round(S / 50) * 50;
+  const interval = STRIKE_INTERVALS[symbol] ?? 50;
+  const atmRaw = Math.round(S / interval) * interval;
   const today = new Date();
   const expiryDate = parseExpiryToDate(expiry);
   const T = Math.max(0.001, (expiryDate.getTime() - today.getTime()) / (365 * 24 * 60 * 60 * 1000));
@@ -204,7 +207,7 @@ export function getOptionChain(symbol: string, expiry: string) {
 
   const strikes = [];
   for (let i = -10; i <= 10; i++) {
-    const K = atmRaw + i * 50;
+    const K = atmRaw + i * interval;
     const moneyness = Math.abs(i) / 10;
     const skew = isNaN(moneyness) ? 0 : moneyness * 0.02;
     const iv = baseIv + (i < 0 ? skew : 0);
@@ -237,13 +240,7 @@ export function getOptionChain(symbol: string, expiry: string) {
     });
   }
 
-  return {
-    symbol,
-    expiry,
-    underlyingLtp: S,
-    atmStrike: atmRaw,
-    strikes,
-  };
+  return { symbol, expiry, underlyingLtp: S, atmStrike: atmRaw, strikes };
 }
 
 export function getCurrentOptionPrice(symbol: string, strike: number, optionType: "CE" | "PE", expiry: string): number {
@@ -262,9 +259,14 @@ export function getLotSize(symbol: string): number {
   return LOT_SIZES[symbol] ?? 25;
 }
 
-export function buildIronCondorLegs(symbol: string, expiry: string, wingWidth: number) {
+export function getStrikeInterval(symbol: string): number {
+  return STRIKE_INTERVALS[symbol] ?? 50;
+}
+
+export function buildIronCondorLegs(symbol: string, expiry: string, wingWidth: number, lotMultiplier = 1) {
   const S = getLtp(symbol);
-  const atmRaw = Math.round(S / 50) * 50;
+  const interval = STRIKE_INTERVALS[symbol] ?? 50;
+  const atmRaw = Math.round(S / interval) * interval;
   const lotSize = getLotSize(symbol);
 
   const sellCallStrike = atmRaw + wingWidth;
@@ -278,29 +280,86 @@ export function buildIronCondorLegs(symbol: string, expiry: string, wingWidth: n
   const buyPutPrice = getCurrentOptionPrice(symbol, buyPutStrike, "PE", expiry);
 
   const netCredit = sellCallPrice + sellPutPrice - buyCallPrice - buyPutPrice;
-  const maxProfit = netCredit * lotSize;
-  const maxLoss = (wingWidth - netCredit) * lotSize;
+  const maxProfit = netCredit * lotSize * lotMultiplier;
+  const maxLoss = (wingWidth - netCredit) * lotSize * lotMultiplier;
 
   return {
     legs: [
-      { symbol, optionType: "CE" as const, strike: sellCallStrike, expiry, action: "SELL" as const, quantity: 1, entryPrice: sellCallPrice, currentPrice: sellCallPrice, lotSize },
-      { symbol, optionType: "CE" as const, strike: buyCallStrike, expiry, action: "BUY" as const, quantity: 1, entryPrice: buyCallPrice, currentPrice: buyCallPrice, lotSize },
-      { symbol, optionType: "PE" as const, strike: sellPutStrike, expiry, action: "SELL" as const, quantity: 1, entryPrice: sellPutPrice, currentPrice: sellPutPrice, lotSize },
-      { symbol, optionType: "PE" as const, strike: buyPutStrike, expiry, action: "BUY" as const, quantity: 1, entryPrice: buyPutPrice, currentPrice: buyPutPrice, lotSize },
+      { symbol, optionType: "CE" as const, strike: sellCallStrike, expiry, action: "SELL" as const, quantity: lotMultiplier, entryPrice: sellCallPrice, currentPrice: sellCallPrice, lotSize },
+      { symbol, optionType: "CE" as const, strike: buyCallStrike, expiry, action: "BUY" as const, quantity: lotMultiplier, entryPrice: buyCallPrice, currentPrice: buyCallPrice, lotSize },
+      { symbol, optionType: "PE" as const, strike: sellPutStrike, expiry, action: "SELL" as const, quantity: lotMultiplier, entryPrice: sellPutPrice, currentPrice: sellPutPrice, lotSize },
+      { symbol, optionType: "PE" as const, strike: buyPutStrike, expiry, action: "BUY" as const, quantity: lotMultiplier, entryPrice: buyPutPrice, currentPrice: buyPutPrice, lotSize },
     ],
+    netCredit: Math.round(netCredit * 100) / 100,
     maxProfit: Math.round(maxProfit * 100) / 100,
     maxLoss: Math.round(maxLoss * 100) / 100,
   };
 }
 
+export function buildIntradayIcLegs(
+  symbol: string,
+  expiry: string,
+  capitalDeployed: number,
+  targetReturnPct: number,
+  brokerageCost: number,
+  maxBuyingLegPremium: number,
+) {
+  const chain = getOptionChain(symbol, expiry);
+  const lotSize = getLotSize(symbol);
+
+  const targetPnl = (capitalDeployed * targetReturnPct) / 100;
+  const netNeeded = targetPnl + brokerageCost;
+  const netPointsNeeded = netNeeded / lotSize;
+
+  const atmStrike = chain.atmStrike;
+  const strikes = chain.strikes;
+
+  const buyCallCandidates = strikes.filter((s) => s.strike > atmStrike && s.callLtp <= maxBuyingLegPremium);
+  const buyPutCandidates = strikes.filter((s) => s.strike < atmStrike && s.putLtp <= maxBuyingLegPremium);
+
+  const buyCall = buyCallCandidates.length > 0 ? buyCallCandidates[0] : strikes.find((s) => s.strike === atmStrike + chain.strikes[1].strike - chain.strikes[0].strike * 3);
+  const buyPut = buyPutCandidates.length > 0 ? buyPutCandidates[buyPutCandidates.length - 1] : undefined;
+
+  const buyCallPremium = buyCall?.callLtp ?? maxBuyingLegPremium;
+  const buyPutPremium = buyPut?.putLtp ?? maxBuyingLegPremium;
+  const totalBuyPremium = buyCallPremium + buyPutPremium;
+
+  const totalSellNeeded = netPointsNeeded + totalBuyPremium;
+  const sellCallTarget = totalSellNeeded / 2;
+  const sellPutTarget = totalSellNeeded - sellCallTarget;
+
+  const sellCallCandidates = strikes.filter((s) => s.strike < (buyCall?.strike ?? atmStrike) && s.strike > atmStrike && s.callLtp >= sellCallTarget * 0.7);
+  const sellPutCandidates = strikes.filter((s) => s.strike > (buyPut?.strike ?? atmStrike) && s.strike < atmStrike && s.putLtp >= sellPutTarget * 0.7);
+
+  const sellCall = sellCallCandidates.length > 0 ? sellCallCandidates[0] : strikes.find((s) => s.strike === atmStrike);
+  const sellPut = sellPutCandidates.length > 0 ? sellPutCandidates[sellPutCandidates.length - 1] : strikes.find((s) => s.strike === atmStrike);
+
+  const sellCallPremium = sellCall?.callLtp ?? 0;
+  const sellPutPremium = sellPut?.putLtp ?? 0;
+  const netCredit = sellCallPremium + sellPutPremium - buyCallPremium - buyPutPremium;
+
+  return {
+    legs: [
+      { symbol, optionType: "CE" as const, strike: sellCall?.strike ?? atmStrike, expiry, action: "SELL" as const, quantity: 1, entryPrice: sellCallPremium, currentPrice: sellCallPremium, lotSize },
+      { symbol, optionType: "CE" as const, strike: buyCall?.strike ?? atmStrike, expiry, action: "BUY" as const, quantity: 1, entryPrice: buyCallPremium, currentPrice: buyCallPremium, lotSize },
+      { symbol, optionType: "PE" as const, strike: sellPut?.strike ?? atmStrike, expiry, action: "SELL" as const, quantity: 1, entryPrice: sellPutPremium, currentPrice: sellPutPremium, lotSize },
+      { symbol, optionType: "PE" as const, strike: buyPut?.strike ?? atmStrike, expiry, action: "BUY" as const, quantity: 1, entryPrice: buyPutPremium, currentPrice: buyPutPremium, lotSize },
+    ],
+    netCredit: Math.round(netCredit * 100) / 100,
+    netPointsNeeded: Math.round(netPointsNeeded * 100) / 100,
+    targetPnl: Math.round(targetPnl * 100) / 100,
+    maxProfit: Math.round((netCredit - totalBuyPremium) * lotSize * 100) / 100,
+  };
+}
+
 export function buildCalendarSpreadLegs(symbol: string, nearExpiry: string, farExpiry: string) {
   const S = getLtp(symbol);
-  const atmRaw = Math.round(S / 50) * 50;
+  const interval = STRIKE_INTERVALS[symbol] ?? 50;
+  const atmRaw = Math.round(S / interval) * interval;
   const lotSize = getLotSize(symbol);
 
   const nearCallPrice = getCurrentOptionPrice(symbol, atmRaw, "CE", nearExpiry);
   const farCallPrice = getCurrentOptionPrice(symbol, atmRaw, "CE", farExpiry);
-
   const netDebit = farCallPrice - nearCallPrice;
 
   return {
@@ -308,27 +367,8 @@ export function buildCalendarSpreadLegs(symbol: string, nearExpiry: string, farE
       { symbol, optionType: "CE" as const, strike: atmRaw, expiry: nearExpiry, action: "SELL" as const, quantity: 1, entryPrice: nearCallPrice, currentPrice: nearCallPrice, lotSize },
       { symbol, optionType: "CE" as const, strike: atmRaw, expiry: farExpiry, action: "BUY" as const, quantity: 1, entryPrice: farCallPrice, currentPrice: farCallPrice, lotSize },
     ],
+    netCredit: Math.round(-netDebit * 100) / 100,
     maxProfit: Math.round(farCallPrice * lotSize * 0.3 * 100) / 100,
     maxLoss: Math.round(netDebit * lotSize * 100) / 100,
-  };
-}
-
-export function buildIntradayExpiryLegs(symbol: string, expiry: string) {
-  const S = getLtp(symbol);
-  const atmRaw = Math.round(S / 50) * 50;
-  const lotSize = getLotSize(symbol);
-
-  const callPrice = getCurrentOptionPrice(symbol, atmRaw, "CE", expiry);
-  const putPrice = getCurrentOptionPrice(symbol, atmRaw, "PE", expiry);
-
-  const netCredit = callPrice + putPrice;
-
-  return {
-    legs: [
-      { symbol, optionType: "CE" as const, strike: atmRaw, expiry, action: "SELL" as const, quantity: 1, entryPrice: callPrice, currentPrice: callPrice, lotSize },
-      { symbol, optionType: "PE" as const, strike: atmRaw, expiry, action: "SELL" as const, quantity: 1, entryPrice: putPrice, currentPrice: putPrice, lotSize },
-    ],
-    maxProfit: Math.round(netCredit * lotSize * 100) / 100,
-    maxLoss: null,
   };
 }

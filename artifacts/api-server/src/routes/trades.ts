@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, desc, and, inArray } from "drizzle-orm";
-import { db, tradesTable, tradeLegsTable, activityEventsTable } from "@workspace/db";
+import { eq, desc, inArray } from "drizzle-orm";
+import { db, tradesTable, tradeLegsTable, activityEventsTable, dailyPnlTable } from "@workspace/db";
 import {
   CreateTradeBody,
   GetTradeParams,
@@ -10,15 +10,22 @@ import {
   CloseTradeParams,
   ListTradesQueryParams,
 } from "@workspace/api-zod";
-import { getCurrentOptionPrice, getLtp } from "../lib/market-simulator";
+import { getCurrentOptionPrice, getQuote } from "../lib/market-adapter";
 
 const router: IRouter = Router();
+
+function resolveSymbol(legSymbol: string): string {
+  if (legSymbol.includes("BANKNIFTY")) return "BANKNIFTY";
+  if (legSymbol.includes("FINNIFTY")) return "FINNIFTY";
+  if (legSymbol.includes("SENSEX")) return "SENSEX";
+  return legSymbol;
+}
 
 async function computeUnrealizedPnl(legs: typeof tradeLegsTable.$inferSelect[]): Promise<number> {
   let pnl = 0;
   for (const leg of legs) {
-    const currentPrice = getCurrentOptionPrice(
-      leg.symbol.includes("BANKNIFTY") ? "BANKNIFTY" : leg.symbol.includes("FINNIFTY") ? "FINNIFTY" : "NIFTY",
+    const currentPrice = await getCurrentOptionPrice(
+      resolveSymbol(leg.symbol),
       Number(leg.strike),
       leg.optionType as "CE" | "PE",
       leg.expiry,
@@ -32,12 +39,14 @@ async function computeUnrealizedPnl(legs: typeof tradeLegsTable.$inferSelect[]):
 async function formatTrade(trade: typeof tradesTable.$inferSelect, legs: typeof tradeLegsTable.$inferSelect[]) {
   const currentLegs = await Promise.all(
     legs.map(async (leg) => {
-      const currentPrice = getCurrentOptionPrice(
-        leg.symbol.includes("BANKNIFTY") ? "BANKNIFTY" : leg.symbol.includes("FINNIFTY") ? "FINNIFTY" : "NIFTY",
-        Number(leg.strike),
-        leg.optionType as "CE" | "PE",
-        leg.expiry,
-      );
+      const currentPrice = trade.status === "closed" && leg.exitPrice
+        ? Number(leg.exitPrice)
+        : await getCurrentOptionPrice(
+            resolveSymbol(leg.symbol),
+            Number(leg.strike),
+            leg.optionType as "CE" | "PE",
+            leg.expiry,
+          );
       return {
         id: leg.id,
         tradeId: leg.tradeId,
@@ -68,6 +77,9 @@ async function formatTrade(trade: typeof tradesTable.$inferSelect, legs: typeof 
     exitUnderlyingPrice: trade.exitUnderlyingPrice != null ? Number(trade.exitUnderlyingPrice) : null,
     unrealizedPnl: Number(trade.unrealizedPnl),
     realizedPnl: trade.realizedPnl != null ? Number(trade.realizedPnl) : null,
+    netPremium: trade.netPremium != null ? Number(trade.netPremium) : null,
+    capitalDeployed: trade.capitalDeployed != null ? Number(trade.capitalDeployed) : null,
+    returnPct: trade.returnPct != null ? Number(trade.returnPct) : null,
     maxProfit: trade.maxProfit != null ? Number(trade.maxProfit) : null,
     maxLoss: trade.maxLoss != null ? Number(trade.maxLoss) : null,
     notes: trade.notes ?? null,
@@ -79,15 +91,9 @@ async function formatTrade(trade: typeof tradesTable.$inferSelect, legs: typeof 
 
 router.get("/trades", async (req, res): Promise<void> => {
   const parsed = ListTradesQueryParams.safeParse(req.query);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
   const { status } = parsed.data;
-
-  let tradesQuery = db.select().from(tradesTable).orderBy(desc(tradesTable.createdAt));
-
   let allTrades;
   if (status === "open") {
     allTrades = await db.select().from(tradesTable).where(eq(tradesTable.status, "open")).orderBy(desc(tradesTable.createdAt));
@@ -115,20 +121,17 @@ router.get("/trades", async (req, res): Promise<void> => {
 
 router.post("/trades", async (req, res): Promise<void> => {
   const parsed = CreateTradeBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
   const { legs, ...tradeData } = parsed.data;
-  const ltp = getLtp(tradeData.underlying);
+  const quote = await getQuote(tradeData.underlying);
 
   const [trade] = await db
     .insert(tradesTable)
     .values({
       ...tradeData,
       strategyFrequency: tradeData.strategyFrequency ?? null,
-      entryUnderlyingPrice: String(ltp),
+      entryUnderlyingPrice: String(quote.ltp),
       unrealizedPnl: "0",
     })
     .returning();
@@ -162,8 +165,7 @@ router.post("/trades", async (req, res): Promise<void> => {
 });
 
 router.get("/trades/:id", async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(raw, 10);
+  const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const [trade] = await db.select().from(tradesTable).where(eq(tradesTable.id, id));
@@ -174,8 +176,7 @@ router.get("/trades/:id", async (req, res): Promise<void> => {
 });
 
 router.patch("/trades/:id", async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(raw, 10);
+  const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const parsed = UpdateTradeBody.safeParse(req.body);
@@ -189,8 +190,7 @@ router.patch("/trades/:id", async (req, res): Promise<void> => {
 });
 
 router.delete("/trades/:id", async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(raw, 10);
+  const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   await db.delete(tradeLegsTable).where(eq(tradeLegsTable.tradeId, id));
@@ -201,8 +201,7 @@ router.delete("/trades/:id", async (req, res): Promise<void> => {
 });
 
 router.post("/trades/:id/close", async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(raw, 10);
+  const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const [trade] = await db.select().from(tradesTable).where(eq(tradesTable.id, id));
@@ -211,12 +210,16 @@ router.post("/trades/:id/close", async (req, res): Promise<void> => {
 
   const legs = await db.select().from(tradeLegsTable).where(eq(tradeLegsTable.tradeId, id));
   const realizedPnl = await computeUnrealizedPnl(legs);
-  const exitLtp = getLtp(trade.underlying);
+  const quote = await getQuote(trade.underlying);
+  const exitLtp = quote.ltp;
+  const capitalDeployed = Number(trade.capitalDeployed ?? 0);
+  const returnPct = capitalDeployed > 0 ? (realizedPnl / capitalDeployed) * 100 : 0;
+  const dateKey = new Date().toISOString().slice(0, 10);
 
   await Promise.all(
     legs.map(async (leg) => {
-      const exitPrice = getCurrentOptionPrice(
-        leg.symbol.includes("BANKNIFTY") ? "BANKNIFTY" : leg.symbol.includes("FINNIFTY") ? "FINNIFTY" : "NIFTY",
+      const exitPrice = await getCurrentOptionPrice(
+        resolveSymbol(leg.symbol),
         Number(leg.strike),
         leg.optionType as "CE" | "PE",
         leg.expiry,
@@ -233,6 +236,7 @@ router.post("/trades/:id/close", async (req, res): Promise<void> => {
       exitUnderlyingPrice: String(exitLtp),
       realizedPnl: String(realizedPnl),
       unrealizedPnl: "0",
+      returnPct: String(Math.round(returnPct * 10000) / 10000),
     })
     .where(eq(tradesTable.id, id))
     .returning();
@@ -240,10 +244,23 @@ router.post("/trades/:id/close", async (req, res): Promise<void> => {
   await db.insert(activityEventsTable).values({
     type: "trade_closed",
     tradeId: trade.id,
-    message: `Trade closed on ${trade.underlying} | P&L: ₹${realizedPnl.toFixed(2)}`,
+    message: `Trade closed on ${trade.underlying} | P&L: ₹${realizedPnl.toFixed(2)} (${returnPct.toFixed(2)}% return)`,
     pnl: String(realizedPnl),
     timestamp: new Date(),
   });
+
+  const existingDailyPnl = await db.select().from(dailyPnlTable)
+    .where(eq(dailyPnlTable.tradeId, id));
+
+  if (existingDailyPnl.length > 0) {
+    await db.update(dailyPnlTable)
+      .set({
+        realizedPnl: String(realizedPnl),
+        returnPct: String(Math.round(returnPct * 10000) / 10000),
+        notes: `Closed at spot ${exitLtp}. P&L: ₹${realizedPnl.toFixed(2)}`,
+      })
+      .where(eq(dailyPnlTable.tradeId, id));
+  }
 
   const updatedLegs = await db.select().from(tradeLegsTable).where(eq(tradeLegsTable.tradeId, id));
   res.json(await formatTrade(updated!, updatedLegs));

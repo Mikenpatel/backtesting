@@ -1,16 +1,14 @@
 import { Router, type IRouter } from "express";
 import { eq, desc } from "drizzle-orm";
-import { db, strategiesTable, tradesTable, tradeLegsTable, activityEventsTable } from "@workspace/db";
+import { db, strategiesTable, tradesTable, tradeLegsTable, activityEventsTable, dailyPnlTable } from "@workspace/db";
 import {
   CreateStrategyBody,
   UpdateStrategyBody,
-  GetStrategyParams,
-  UpdateStrategyParams,
-  DeleteStrategyParams,
   ExecuteStrategyParams,
   ToggleStrategyParams,
+  DeleteStrategyParams,
 } from "@workspace/api-zod";
-import { getLtp, getExpiries, buildIronCondorLegs, buildCalendarSpreadLegs, buildIntradayExpiryLegs } from "../lib/market-simulator";
+import { getQuote, getExpiries, findIronCondorLegs, findIntradayIcLegs, getLotSize } from "../lib/market-adapter";
 
 const router: IRouter = Router();
 
@@ -27,6 +25,10 @@ function formatStrategy(s: typeof strategiesTable.$inferSelect) {
     wingWidth: s.wingWidth ?? null,
     stopLossPct: s.stopLossPct != null ? Number(s.stopLossPct) : null,
     targetProfitPct: s.targetProfitPct != null ? Number(s.targetProfitPct) : null,
+    capitalPerTrade: s.capitalPerTrade != null ? Number(s.capitalPerTrade) : 90000,
+    maxBuyingLegPremium: s.maxBuyingLegPremium != null ? Number(s.maxBuyingLegPremium) : 5,
+    targetReturnPct: s.targetReturnPct != null ? Number(s.targetReturnPct) : 1,
+    brokerageCost: s.brokerageCost != null ? Number(s.brokerageCost) : 300,
     entryTimeIst: s.entryTimeIst ?? null,
     exitTimeIst: s.exitTimeIst ?? null,
     lastExecutedAt: s.lastExecutedAt?.toISOString() ?? null,
@@ -43,10 +45,7 @@ router.get("/strategies", async (_req, res): Promise<void> => {
 
 router.post("/strategies", async (req, res): Promise<void> => {
   const parsed = CreateStrategyBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
   const [strategy] = await db
     .insert(strategiesTable)
@@ -61,20 +60,8 @@ router.post("/strategies", async (req, res): Promise<void> => {
   res.status(201).json(formatStrategy(strategy));
 });
 
-router.get("/strategies/:id", async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(raw, 10);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-
-  const [strategy] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
-  if (!strategy) { res.status(404).json({ error: "Strategy not found" }); return; }
-
-  res.json(formatStrategy(strategy));
-});
-
 router.patch("/strategies/:id", async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(raw, 10);
+  const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const parsed = UpdateStrategyBody.safeParse(req.body);
@@ -92,8 +79,7 @@ router.patch("/strategies/:id", async (req, res): Promise<void> => {
 });
 
 router.delete("/strategies/:id", async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(raw, 10);
+  const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const [deleted] = await db.delete(strategiesTable).where(eq(strategiesTable.id, id)).returning();
@@ -103,58 +89,69 @@ router.delete("/strategies/:id", async (req, res): Promise<void> => {
 });
 
 router.post("/strategies/:id/execute", async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(raw, 10);
+  const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const [strategy] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
   if (!strategy) { res.status(404).json({ error: "Strategy not found" }); return; }
 
-  const expiries = getExpiries(strategy.underlying);
+  const expiries = await getExpiries(strategy.underlying);
   const nearExpiry = expiries[0];
-  const farExpiry = expiries[2] ?? expiries[1];
+  const biweeklyExpiry = expiries[1] ?? expiries[0];
+  const monthlyExpiry = expiries.find((e, i) => i >= 2) ?? expiries[expiries.length - 1];
 
-  let legs: ReturnType<typeof buildIronCondorLegs>["legs"];
-  let maxProfit: number | null;
-  let maxLoss: number | null;
+  const freq = strategy.frequency;
+  const targetExpiry = freq === "BIWEEKLY" ? biweeklyExpiry
+    : freq === "MONTHLY" ? monthlyExpiry
+    : nearExpiry;
 
-  if (strategy.strategyType === "IRON_CONDOR") {
-    const wingWidth = strategy.wingWidth ?? 200;
-    const result = buildIronCondorLegs(strategy.underlying, nearExpiry, wingWidth);
+  const capitalPerTrade = Number(strategy.capitalPerTrade ?? 90000);
+  const targetReturnPct = Number(strategy.targetReturnPct ?? 1);
+  const brokerageCost = Number(strategy.brokerageCost ?? 300);
+  const maxBuyingLegPremium = Number(strategy.maxBuyingLegPremium ?? 5);
+  const wingWidth = strategy.wingWidth ?? 200;
+
+  let legs: Array<{ symbol: string; optionType: "CE" | "PE"; strike: number; expiry: string; action: "BUY" | "SELL"; quantity: number; entryPrice: number; currentPrice: number; lotSize: number }>;
+  let maxProfit: number | null = null;
+  let maxLoss: number | null = null;
+  let netPremium = 0;
+
+  if (strategy.strategyType === "INTRADAY_IC" || strategy.frequency === "INTRADAY") {
+    const result = await findIntradayIcLegs(
+      strategy.underlying, targetExpiry, capitalPerTrade, targetReturnPct, brokerageCost, maxBuyingLegPremium,
+    );
     legs = result.legs;
+    netPremium = result.netCredit;
     maxProfit = result.maxProfit;
-    maxLoss = result.maxLoss;
-  } else if (strategy.strategyType === "CALENDAR_SPREAD") {
-    const result = buildCalendarSpreadLegs(strategy.underlying, nearExpiry, farExpiry);
-    legs = result.legs;
-    maxProfit = result.maxProfit;
-    maxLoss = result.maxLoss;
   } else {
-    const result = buildIntradayExpiryLegs(strategy.underlying, nearExpiry);
+    const result = await findIronCondorLegs(strategy.underlying, targetExpiry, wingWidth, strategy.lotMultiplier);
     legs = result.legs;
+    netPremium = result.netCredit;
     maxProfit = result.maxProfit;
     maxLoss = result.maxLoss;
   }
 
-  const ltp = getLtp(strategy.underlying);
-  const freq = strategy.frequency === "INTRADAY" ? null : strategy.frequency as "WEEKLY" | "BIWEEKLY" | "MONTHLY";
+  const quote = await getQuote(strategy.underlying);
+  const ltp = quote.ltp;
+  const dateKey = new Date().toISOString().slice(0, 10);
 
   const [trade] = await db
     .insert(tradesTable)
     .values({
       strategyType: strategy.strategyType,
-      strategyFrequency: freq,
+      strategyFrequency: freq === "INTRADAY" ? null : freq as "WEEKLY" | "BIWEEKLY" | "MONTHLY",
       underlying: strategy.underlying,
       status: "open",
       entryUnderlyingPrice: String(ltp),
       unrealizedPnl: "0",
       maxProfit: maxProfit != null ? String(maxProfit) : null,
       maxLoss: maxLoss != null ? String(maxLoss) : null,
+      netPremium: String(netPremium),
+      capitalDeployed: String(capitalPerTrade),
       strategyId: strategy.id,
     })
     .returning();
 
-  const multiplier = strategy.lotMultiplier;
   const insertedLegs = await db
     .insert(tradeLegsTable)
     .values(
@@ -165,7 +162,7 @@ router.post("/strategies/:id/execute", async (req, res): Promise<void> => {
         strike: String(l.strike),
         expiry: l.expiry,
         action: l.action,
-        quantity: multiplier,
+        quantity: l.quantity,
         entryPrice: String(l.entryPrice),
         currentPrice: String(l.currentPrice),
         lotSize: l.lotSize,
@@ -173,17 +170,30 @@ router.post("/strategies/:id/execute", async (req, res): Promise<void> => {
     )
     .returning();
 
-  await db.update(strategiesTable).set({
-    lastExecutedAt: new Date(),
-    totalTradesPlaced: strategy.totalTradesPlaced + 1,
-  }).where(eq(strategiesTable.id, id));
+  await db.update(strategiesTable)
+    .set({ lastExecutedAt: new Date(), totalTradesPlaced: strategy.totalTradesPlaced + 1 })
+    .where(eq(strategiesTable.id, id));
 
   await db.insert(activityEventsTable).values({
     type: "strategy_executed",
     tradeId: trade.id,
     strategyId: strategy.id,
-    message: `${strategy.name} executed: ${strategy.strategyType} on ${strategy.underlying}`,
+    message: `${strategy.name} executed: ${strategy.strategyType} on ${strategy.underlying} (net ₹${netPremium.toFixed(2)}/lot)`,
     timestamp: new Date(),
+  });
+
+  await db.insert(dailyPnlTable).values({
+    date: dateKey,
+    underlying: strategy.underlying,
+    strategyType: strategy.strategyType,
+    strategyFrequency: freq === "INTRADAY" ? null : freq as "WEEKLY" | "BIWEEKLY" | "MONTHLY",
+    tradeId: trade.id,
+    netPremium: String(netPremium),
+    realizedPnl: "0",
+    capitalDeployed: String(capitalPerTrade),
+    returnPct: "0",
+    brokerageCost: String(brokerageCost),
+    notes: `Entry at spot ${ltp}. Target expiry: ${targetExpiry}.`,
   });
 
   const formattedLegs = insertedLegs.map((leg) => ({
@@ -214,8 +224,10 @@ router.post("/strategies/:id/execute", async (req, res): Promise<void> => {
     exitUnderlyingPrice: null,
     unrealizedPnl: 0,
     realizedPnl: null,
-    maxProfit: maxProfit,
-    maxLoss: maxLoss,
+    netPremium,
+    capitalDeployed: capitalPerTrade,
+    maxProfit,
+    maxLoss,
     notes: null,
     legs: formattedLegs,
     createdAt: trade.createdAt.toISOString(),
@@ -224,8 +236,7 @@ router.post("/strategies/:id/execute", async (req, res): Promise<void> => {
 });
 
 router.post("/strategies/:id/toggle", async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(raw, 10);
+  const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const [strategy] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));

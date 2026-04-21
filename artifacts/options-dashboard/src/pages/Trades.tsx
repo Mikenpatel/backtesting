@@ -167,13 +167,9 @@ export default function Trades() {
           <h1 className="text-xl font-semibold">Trades</h1>
           <p className="text-sm text-muted-foreground mt-0.5">All paper trades — click row to expand legs</p>
         </div>
-        <Link href="/trades/new">
-          {(props: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
-            <a {...props} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded font-medium hover:opacity-90 transition-opacity">
-              <Plus size={14} />
-              New Trade
-            </a>
-          )}
+        <Link href="/trades/new" className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded font-medium hover:opacity-90 transition-opacity">
+          <Plus size={14} />
+          New Trade
         </Link>
       </div>
 
