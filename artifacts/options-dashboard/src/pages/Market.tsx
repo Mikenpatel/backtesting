@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   useGetMarketQuote,
   getGetMarketQuoteQueryKey,
@@ -7,9 +7,50 @@ import {
   useGetExpiries,
   getGetExpiriesQueryKey,
 } from "@workspace/api-client-react";
-import { TrendingUp, TrendingDown } from "lucide-react";
+import { TrendingUp, TrendingDown, Radio, FlaskConical } from "lucide-react";
 
 type Symbol = "NIFTY" | "BANKNIFTY" | "FINNIFTY";
+
+interface MarketModeInfo {
+  mode: "live" | "simulator";
+  hasCredentials: boolean;
+  reason: string;
+}
+
+function useMarketMode() {
+  const [info, setInfo] = useState<MarketModeInfo | null>(null);
+  useEffect(() => {
+    fetch("/api/market/mode")
+      .then((r) => r.json())
+      .then((d) => setInfo(d as MarketModeInfo))
+      .catch(() => null);
+  }, []);
+  return info;
+}
+
+function ModeBadge({ info }: { info: MarketModeInfo | null }) {
+  if (!info) return null;
+  if (info.mode === "live") {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+        title={info.reason}
+      >
+        <Radio size={11} className="animate-pulse" />
+        LIVE · Fyers
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/25"
+      title={info.reason}
+    >
+      <FlaskConical size={11} />
+      SIMULATOR
+    </span>
+  );
+}
 
 function QuoteCard({ symbol }: { symbol: Symbol }) {
   const { data: quote } = useGetMarketQuote(
@@ -42,6 +83,7 @@ function QuoteCard({ symbol }: { symbol: Symbol }) {
 
 export default function Market() {
   const [selectedSymbol, setSelectedSymbol] = useState<Symbol>("NIFTY");
+  const modeInfo = useMarketMode();
 
   const { data: expiries } = useGetExpiries(
     { symbol: selectedSymbol },
@@ -64,11 +106,18 @@ export default function Market() {
 
   const niftyQuote = useGetMarketQuote({ symbol: "NIFTY" }, { query: { queryKey: getGetMarketQuoteQueryKey({ symbol: "NIFTY" }), refetchInterval: 15000 } });
 
+  const subtitle = modeInfo?.mode === "live"
+    ? "Live NSE/BSE data via Fyers API — refreshes every 15 seconds"
+    : "Simulated NSE market data — refreshes every 15 seconds";
+
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Market</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Simulated NSE market data — refreshes every 15 seconds</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-semibold">Market</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>
+        </div>
+        <ModeBadge info={modeInfo} />
       </div>
 
       {/* VIX bar */}

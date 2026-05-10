@@ -15,6 +15,15 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
+ * @summary Get the current market data source mode (live Fyers or simulator)
+ */
+export const GetMarketModeResponse = zod.object({
+  mode: zod.enum(["live", "simulator"]),
+  hasCredentials: zod.boolean(),
+  reason: zod.string(),
+});
+
+/**
  * @summary Get current market quote for an underlying
  */
 export const GetMarketQuoteQueryParams = zod.object({

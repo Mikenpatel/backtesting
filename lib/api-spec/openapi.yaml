@@ -32,6 +32,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 
+  /market/mode:
+    get:
+      operationId: getMarketMode
+      tags: [market]
+      summary: Get the current market data source mode (live Fyers or simulator)
+      responses:
+        "200":
+          description: Current market mode
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketMode"
+
   /market/quote:
     get:
       operationId: getMarketQuote
@@ -464,6 +477,21 @@ components:
         - changePct
         - vix
         - timestamp
+
+    MarketMode:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [live, simulator]
+        hasCredentials:
+          type: boolean
+        reason:
+          type: string
+      required:
+        - mode
+        - hasCredentials
+        - reason
 
     OptionStrike:
       type: object

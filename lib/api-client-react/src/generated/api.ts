@@ -27,6 +27,7 @@ import type {
   GetOptionChainParams,
   HealthStatus,
   ListTradesParams,
+  MarketMode,
   MarketQuote,
   OptionChain,
   PnlChartPoint,
@@ -114,6 +115,81 @@ export function useHealthCheck<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get the current market data source mode (live Fyers or simulator)
+ */
+export const getGetMarketModeUrl = () => {
+  return `/api/market/mode`;
+};
+
+export const getMarketMode = async (
+  options?: RequestInit,
+): Promise<MarketMode> => {
+  return customFetch<MarketMode>(getGetMarketModeUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetMarketModeQueryKey = () => {
+  return [`/api/market/mode`] as const;
+};
+
+export const getGetMarketModeQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMarketMode>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMarketMode>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetMarketModeQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getMarketMode>>> = ({
+    signal,
+  }) => getMarketMode({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMarketMode>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMarketModeQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMarketMode>>
+>;
+export type GetMarketModeQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get the current market data source mode (live Fyers or simulator)
+ */
+
+export function useGetMarketMode<
+  TData = Awaited<ReturnType<typeof getMarketMode>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMarketMode>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMarketModeQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

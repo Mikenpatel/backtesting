@@ -1,8 +1,12 @@
 import { Router, type IRouter } from "express";
 import { GetMarketQuoteQueryParams, GetOptionChainQueryParams, GetExpiriesQueryParams } from "@workspace/api-zod";
-import { getQuote, getOptionChain, getExpiries } from "../lib/market-adapter";
+import { getQuote, getOptionChain, getExpiries, getMarketMode } from "../lib/market-adapter";
 
 const router: IRouter = Router();
+
+router.get("/market/mode", (_req, res): void => {
+  res.json(getMarketMode());
+});
 
 router.get("/market/quote", async (req, res): Promise<void> => {
   const parsed = GetMarketQuoteQueryParams.safeParse(req.query);

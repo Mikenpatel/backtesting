@@ -21,6 +21,20 @@ export interface MarketQuote {
   timestamp: string;
 }
 
+export type MarketModeMode =
+  (typeof MarketModeMode)[keyof typeof MarketModeMode];
+
+export const MarketModeMode = {
+  live: "live",
+  simulator: "simulator",
+} as const;
+
+export interface MarketMode {
+  mode: MarketModeMode;
+  hasCredentials: boolean;
+  reason: string;
+}
+
 export interface OptionStrike {
   strike: number;
   callLtp: number;

@@ -1,5 +1,6 @@
 import * as sim from "./market-simulator";
 import { getFyersClient } from "./fyers-client";
+import { logger } from "./logger";
 
 export interface MarketQuote {
   symbol: string;
@@ -39,39 +40,77 @@ export interface OptionChain {
   strikes: OptionStrike[];
 }
 
+export interface MarketMode {
+  mode: "live" | "simulator";
+  hasCredentials: boolean;
+  reason: string;
+}
+
 export function isLiveMode(): boolean {
   return !!(process.env.FYERS_APP_ID && process.env.FYERS_ACCESS_TOKEN);
 }
 
+export function getMarketMode(): MarketMode {
+  const hasCredentials = isLiveMode();
+  if (hasCredentials) {
+    return {
+      mode: "live",
+      hasCredentials: true,
+      reason: "FYERS_APP_ID and FYERS_ACCESS_TOKEN are set",
+    };
+  }
+  return {
+    mode: "simulator",
+    hasCredentials: false,
+    reason: "FYERS_APP_ID or FYERS_ACCESS_TOKEN not set — using Black-Scholes simulator",
+  };
+}
+
 export async function getQuote(symbol: string): Promise<MarketQuote> {
   if (isLiveMode()) {
-    const client = getFyersClient();
-    return client.getQuote(symbol);
+    try {
+      const client = getFyersClient();
+      return await client.getQuote(symbol);
+    } catch (err) {
+      logger.warn({ err, symbol }, "Fyers getQuote failed — falling back to simulator");
+    }
   }
   return sim.getMarketQuote(symbol);
 }
 
 export async function getOptionChain(symbol: string, expiry: string): Promise<OptionChain> {
   if (isLiveMode()) {
-    const client = getFyersClient();
-    return client.getOptionChain(symbol, expiry);
+    try {
+      const client = getFyersClient();
+      return await client.getOptionChain(symbol, expiry);
+    } catch (err) {
+      logger.warn({ err, symbol, expiry }, "Fyers getOptionChain failed — falling back to simulator");
+    }
   }
   return sim.getOptionChain(symbol, expiry);
 }
 
 export async function getExpiries(symbol: string): Promise<string[]> {
   if (isLiveMode()) {
-    const client = getFyersClient();
-    return client.getExpiries(symbol);
+    try {
+      const client = getFyersClient();
+      return await client.getExpiries(symbol);
+    } catch (err) {
+      logger.warn({ err, symbol }, "Fyers getExpiries failed — falling back to simulator");
+    }
   }
   return sim.getExpiries(symbol);
 }
 
 export async function getCurrentOptionPrice(symbol: string, strike: number, optionType: "CE" | "PE", expiry: string): Promise<number> {
   if (isLiveMode()) {
-    const chain = await getOptionChain(symbol, expiry);
-    const row = chain.strikes.find((s) => s.strike === strike);
-    return row ? (optionType === "CE" ? row.callLtp : row.putLtp) : 0;
+    try {
+      const chain = await getOptionChain(symbol, expiry);
+      const row = chain.strikes.find((s) => s.strike === strike);
+      return row ? (optionType === "CE" ? row.callLtp : row.putLtp) : 0;
+    } catch (err) {
+      logger.warn({ err, symbol, strike, optionType }, "Fyers getCurrentOptionPrice failed — falling back to simulator");
+    }
   }
   return sim.getCurrentOptionPrice(symbol, strike, optionType, expiry);
 }
