@@ -1,0 +1,133 @@
+ npm install
+! Corepack is about to download https://registry.npmjs.org/npm/-/npm-11.14.1.tgz
+? Do you want to continue? [Y/n] Y
+
+npm warn Unknown project config "auto-install-peers". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: typescript@5.9.3
+npm warn Found: peer eslint@"^8.57.0 || ^9.0.0 || ^10.0.0" from @typescript-eslint/rule-tester@8.59.2
+npm warn node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/node_modules/@typescript-eslint/rule-tester
+npm warn   dev @typescript-eslint/rule-tester@"^8.24.1" from typescript@5.9.3
+npm warn   node_modules/.pnpm/typescript@5.9.3/node_modules/typescript
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer eslint@"^8.57.0 || ^9.0.0 || ^10.0.0" from @typescript-eslint/rule-tester@8.59.2
+npm warn node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/node_modules/@typescript-eslint/rule-tester
+npm warn   dev @typescript-eslint/rule-tester@"^8.24.1" from typescript@5.9.3
+npm warn   node_modules/.pnpm/typescript@5.9.3/node_modules/typescript
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: typescript@5.9.3
+npm warn Found: peer eslint@"^8.57.0 || ^9.0.0 || ^10.0.0" from @typescript-eslint/type-utils@8.59.2
+npm warn node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/node_modules/@typescript-eslint/type-utils
+npm warn   dev @typescript-eslint/type-utils@"^8.24.1" from typescript@5.9.3
+npm warn   node_modules/.pnpm/typescript@5.9.3/node_modules/typescript
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer eslint@"^8.57.0 || ^9.0.0 || ^10.0.0" from @typescript-eslint/type-utils@8.59.2
+npm warn node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/node_modules/@typescript-eslint/type-utils
+npm warn   dev @typescript-eslint/type-utils@"^8.24.1" from typescript@5.9.3
+npm warn   node_modules/.pnpm/typescript@5.9.3/node_modules/typescript
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: typescript@5.9.3
+npm warn Found: peer eslint@"^8.57.0 || ^9.0.0 || ^10.0.0" from @typescript-eslint/utils@8.59.2
+npm warn node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/node_modules/@typescript-eslint/utils
+npm warn   dev @typescript-eslint/utils@"^8.24.1" from typescript@5.9.3
+npm warn   node_modules/.pnpm/typescript@5.9.3/node_modules/typescript
+npm warn   2 more (@typescript-eslint/rule-tester, @typescript-eslint/type-utils)
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer eslint@"^8.57.0 || ^9.0.0 || ^10.0.0" from @typescript-eslint/utils@8.59.2
+npm warn node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/node_modules/@typescript-eslint/utils
+npm warn   dev @typescript-eslint/utils@"^8.24.1" from typescript@5.9.3
+npm warn   node_modules/.pnpm/typescript@5.9.3/node_modules/typescript
+npm warn   2 more (@typescript-eslint/rule-tester, @typescript-eslint/type-utils)
+npm error Cannot read properties of null (reading 'isDescendantOf')
+npm error A complete log of this run can be found in: C:\Users\miken\AppData\Local\npm-cache\_logs\2026-05-10T16_59_42_534Z-debug-0.log
+
+miken@DESKTOP-CSA4N8S MINGW64 /d/DevOps/backtesting (main)
+$ npm install-f
+Unknown command: "install-f"
+
+
+Did you mean this?
+  npm install # Install a package
+To see a list of supported npm commands, run:
+  npm help
+
+miken@DESKTOP-CSA4N8S MINGW64 /d/DevOps/backtesting (main)
+$ ^C
+
+miken@DESKTOP-CSA4N8S MINGW64 /d/DevOps/backtesting (main)
+$ ^C
+
+miken@DESKTOP-CSA4N8S MINGW64 /d/DevOps/backtesting (main)
+$ npm install -f
+npm warn using --force Recommended protections disabled.
+npm warn Unknown project config "auto-install-peers". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: typescript@5.9.3
+npm warn Found: peer eslint@"^8.57.0 || ^9.0.0 || ^10.0.0" from @typescript-eslint/rule-tester@8.59.2
+npm warn node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/node_modules/@typescript-eslint/rule-tester
+npm warn   dev @typescript-eslint/rule-tester@"^8.24.1" from typescript@5.9.3
+npm warn   node_modules/.pnpm/typescript@5.9.3/node_modules/typescript
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer eslint@"^8.57.0 || ^9.0.0 || ^10.0.0" from @typescript-eslint/rule-tester@8.59.2
+npm warn node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/node_modules/@typescript-eslint/rule-tester
+npm warn   dev @typescript-eslint/rule-tester@"^8.24.1" from typescript@5.9.3
+npm warn   node_modules/.pnpm/typescript@5.9.3/node_modules/typescript
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: typescript@5.9.3
+npm warn Found: peer eslint@"^8.57.0 || ^9.0.0 || ^10.0.0" from @typescript-eslint/type-utils@8.59.2
+npm warn node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/node_modules/@typescript-eslint/type-utils
+npm warn   dev @typescript-eslint/type-utils@"^8.24.1" from typescript@5.9.3
+npm warn   node_modules/.pnpm/typescript@5.9.3/node_modules/typescript
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer eslint@"^8.57.0 || ^9.0.0 || ^10.0.0" from @typescript-eslint/type-utils@8.59.2
+npm warn node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/node_modules/@typescript-eslint/type-utils
+npm warn   dev @typescript-eslint/type-utils@"^8.24.1" from typescript@5.9.3
+npm warn   node_modules/.pnpm/typescript@5.9.3/node_modules/typescript
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: typescript@5.9.3
+npm warn Found: peer eslint@"^8.57.0 || ^9.0.0 || ^10.0.0" from @typescript-eslint/utils@8.59.2
+npm warn node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/node_modules/@typescript-eslint/utils
+npm warn   dev @typescript-eslint/utils@"^8.24.1" from typescript@5.9.3
+npm warn   node_modules/.pnpm/typescript@5.9.3/node_modules/typescript
+npm warn   2 more (@typescript-eslint/rule-tester, @typescript-eslint/type-utils)
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer eslint@"^8.57.0 || ^9.0.0 || ^10.0.0" from @typescript-eslint/utils@8.59.2
+npm warn node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/node_modules/@typescript-eslint/utils
+npm warn   dev @typescript-eslint/utils@"^8.24.1" from typescript@5.9.3
+npm warn   node_modules/.pnpm/typescript@5.9.3/node_modules/typescript
+npm warn   2 more (@typescript-eslint/rule-tester, @typescript-eslint/type-utils)
+npm error Cannot read properties of null (reading 'isDescendantOf')
+npm error A complete log of this run can be found in: C:\Users\miken\AppData\Local\npm-cache\_logs\2026-05-10T17_00_50_603Z-debug-0.log
+
+miken@DESKTOP-CSA4N8S MINGW64 /d/DevOps/backtesting (main)
+$ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
