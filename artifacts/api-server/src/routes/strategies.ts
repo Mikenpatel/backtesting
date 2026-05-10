@@ -122,7 +122,7 @@ router.post("/strategies/:id/execute", async (req, res): Promise<void> => {
     );
     legs = result.legs;
     netPremium = result.netCredit;
-    maxProfit = result.maxProfit;
+    maxProfit = result.targetPnl;
   } else {
     const result = await findIronCondorLegs(strategy.underlying, targetExpiry, wingWidth, strategy.lotMultiplier);
     legs = result.legs;

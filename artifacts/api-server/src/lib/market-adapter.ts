@@ -39,8 +39,8 @@ export interface OptionChain {
   strikes: OptionStrike[];
 }
 
-function isLiveMode(): boolean {
-  return !!(process.env.FYERS_APP_ID && process.env.FYERS_SECRET_KEY);
+export function isLiveMode(): boolean {
+  return !!(process.env.FYERS_APP_ID && process.env.FYERS_ACCESS_TOKEN);
 }
 
 export async function getQuote(symbol: string): Promise<MarketQuote> {
