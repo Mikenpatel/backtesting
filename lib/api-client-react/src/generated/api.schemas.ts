@@ -26,6 +26,7 @@ export type MarketModeMode =
 
 export const MarketModeMode = {
   live: "live",
+  blocked: "blocked",
   simulator: "simulator",
 } as const;
 

@@ -18,7 +18,7 @@ export const HealthCheckResponse = zod.object({
  * @summary Get the current market data source mode (live Fyers or simulator)
  */
 export const GetMarketModeResponse = zod.object({
-  mode: zod.enum(["live", "simulator"]),
+  mode: zod.enum(["live", "blocked", "simulator"]),
   hasCredentials: zod.boolean(),
   reason: zod.string(),
 });

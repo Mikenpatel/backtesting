@@ -483,7 +483,7 @@ components:
       properties:
         mode:
           type: string
-          enum: [live, simulator]
+          enum: [live, blocked, simulator]
         hasCredentials:
           type: boolean
         reason:

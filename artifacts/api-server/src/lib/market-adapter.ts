@@ -41,9 +41,32 @@ export interface OptionChain {
 }
 
 export interface MarketMode {
-  mode: "live" | "simulator";
+  mode: "live" | "blocked" | "simulator";
   hasCredentials: boolean;
   reason: string;
+}
+
+// Track actual Fyers call health at runtime
+// null = no calls made yet (unknown), true = last call succeeded, false = last call failed
+let fyersHealthy: boolean | null = null;
+let fyersFailReason = "";
+
+function recordFyersSuccess() {
+  fyersHealthy = true;
+  fyersFailReason = "";
+}
+
+function recordFyersFailure(err: unknown) {
+  fyersHealthy = false;
+  const msg = err instanceof Error ? err.message : String(err);
+  // Detect common Cloudflare/IP-block patterns
+  if (msg.includes("1015") || msg.toLowerCase().includes("rate limit") || msg.toLowerCase().includes("banned")) {
+    fyersFailReason = "Fyers is blocking requests from this server's IP address (Cloudflare 1015). Run locally for live data.";
+  } else if (msg.includes("401") || msg.toLowerCase().includes("unauthorized")) {
+    fyersFailReason = "Access token rejected — token may have expired. Update FYERS_ACCESS_TOKEN.";
+  } else {
+    fyersFailReason = msg.slice(0, 120);
+  }
 }
 
 export function isLiveMode(): boolean {
@@ -52,17 +75,31 @@ export function isLiveMode(): boolean {
 
 export function getMarketMode(): MarketMode {
   const hasCredentials = isLiveMode();
-  if (hasCredentials) {
+
+  if (!hasCredentials) {
     return {
-      mode: "live",
-      hasCredentials: true,
-      reason: "FYERS_APP_ID and FYERS_ACCESS_TOKEN are set",
+      mode: "simulator",
+      hasCredentials: false,
+      reason: "FYERS_APP_ID or FYERS_ACCESS_TOKEN not set — using Black-Scholes simulator",
     };
   }
+
+  // Credentials set but calls are failing
+  if (fyersHealthy === false) {
+    return {
+      mode: "blocked",
+      hasCredentials: true,
+      reason: fyersFailReason || "Fyers API calls are failing — falling back to simulator",
+    };
+  }
+
+  // Credentials set and calls are succeeding (or no call made yet — optimistic)
   return {
-    mode: "simulator",
-    hasCredentials: false,
-    reason: "FYERS_APP_ID or FYERS_ACCESS_TOKEN not set — using Black-Scholes simulator",
+    mode: "live",
+    hasCredentials: true,
+    reason: fyersHealthy === null
+      ? "FYERS_APP_ID and FYERS_ACCESS_TOKEN are set (verifying…)"
+      : "Live data from Fyers API",
   };
 }
 
@@ -70,8 +107,11 @@ export async function getQuote(symbol: string): Promise<MarketQuote> {
   if (isLiveMode()) {
     try {
       const client = getFyersClient();
-      return await client.getQuote(symbol);
+      const result = await client.getQuote(symbol);
+      recordFyersSuccess();
+      return result;
     } catch (err) {
+      recordFyersFailure(err);
       logger.warn({ err, symbol }, "Fyers getQuote failed — falling back to simulator");
     }
   }
@@ -82,8 +122,11 @@ export async function getOptionChain(symbol: string, expiry: string): Promise<Op
   if (isLiveMode()) {
     try {
       const client = getFyersClient();
-      return await client.getOptionChain(symbol, expiry);
+      const result = await client.getOptionChain(symbol, expiry);
+      recordFyersSuccess();
+      return result;
     } catch (err) {
+      recordFyersFailure(err);
       logger.warn({ err, symbol, expiry }, "Fyers getOptionChain failed — falling back to simulator");
     }
   }
@@ -94,8 +137,11 @@ export async function getExpiries(symbol: string): Promise<string[]> {
   if (isLiveMode()) {
     try {
       const client = getFyersClient();
-      return await client.getExpiries(symbol);
+      const result = await client.getExpiries(symbol);
+      recordFyersSuccess();
+      return result;
     } catch (err) {
+      recordFyersFailure(err);
       logger.warn({ err, symbol }, "Fyers getExpiries failed — falling back to simulator");
     }
   }

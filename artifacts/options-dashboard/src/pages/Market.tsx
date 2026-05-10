@@ -7,12 +7,12 @@ import {
   useGetExpiries,
   getGetExpiriesQueryKey,
 } from "@workspace/api-client-react";
-import { TrendingUp, TrendingDown, Radio, FlaskConical } from "lucide-react";
+import { TrendingUp, TrendingDown, Radio, FlaskConical, ShieldAlert } from "lucide-react";
 
 type Symbol = "NIFTY" | "BANKNIFTY" | "FINNIFTY";
 
 interface MarketModeInfo {
-  mode: "live" | "simulator";
+  mode: "live" | "blocked" | "simulator";
   hasCredentials: boolean;
   reason: string;
 }
@@ -24,12 +24,21 @@ function useMarketMode() {
       .then((r) => r.json())
       .then((d) => setInfo(d as MarketModeInfo))
       .catch(() => null);
+    // Re-check every 30s so badge updates once a live call succeeds or starts failing
+    const id = setInterval(() => {
+      fetch("/api/market/mode")
+        .then((r) => r.json())
+        .then((d) => setInfo(d as MarketModeInfo))
+        .catch(() => null);
+    }, 30_000);
+    return () => clearInterval(id);
   }, []);
   return info;
 }
 
 function ModeBadge({ info }: { info: MarketModeInfo | null }) {
   if (!info) return null;
+
   if (info.mode === "live") {
     return (
       <span
@@ -41,6 +50,19 @@ function ModeBadge({ info }: { info: MarketModeInfo | null }) {
       </span>
     );
   }
+
+  if (info.mode === "blocked") {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/25 cursor-help"
+        title={info.reason}
+      >
+        <ShieldAlert size={11} />
+        IP BLOCKED · Simulator
+      </span>
+    );
+  }
+
   return (
     <span
       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/25"
