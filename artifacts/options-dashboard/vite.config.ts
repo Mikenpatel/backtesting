@@ -66,6 +66,15 @@ export default defineConfig({
     fs: {
       strict: true,
     },
+    // Proxy /api to the API server when running locally (no Replit shared proxy)
+    ...(process.env.REPL_ID === undefined && {
+      proxy: {
+        "/api": {
+          target: `http://localhost:${process.env.API_PORT ?? 3001}`,
+          changeOrigin: true,
+        },
+      },
+    }),
   },
   preview: {
     port,
