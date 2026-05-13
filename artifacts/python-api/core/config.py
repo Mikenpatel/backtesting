@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     fyers_app_id: Optional[str] = None
     fyers_access_token: Optional[str] = None
 
-    # Server port (defaults to 8081 to avoid conflict with Node.js on 8080)
+    # Server port (8000; Node.js api-server at 8080 is no longer used)
     port: int = 8000
 
     # Tells pydantic-settings to read from .env file automatically

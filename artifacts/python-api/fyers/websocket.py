@@ -137,16 +137,26 @@ class FyersWebSocketClient:
         """
         Called on WebSocket errors.
 
-        Auth error (code -99 = 'Token is expired') is fatal — stop the loop.
-        All other errors are logged as warnings; the reconnect loop handles them.
+        Auth error (code -99 = 'Token is expired') is fatal.
+        We set the flag and close the socket so keep_running() returns.
+        The start() loop then sees _auth_failed=True and exits cleanly.
+
+        Note: We do NOT raise here. The callback runs inside Fyers SDK code
+        which may swallow exceptions. Instead, we close the socket explicitly
+        so keep_running() unblocks, and handle the auth error in start().
         """
         if isinstance(message, dict) and message.get("code") == -99:
-            # Token is expired — raise AuthError to break the reconnect loop
             logger.error(
                 "Fyers WebSocket: token expired (code -99). "
                 "Set a fresh FYERS_ACCESS_TOKEN in .env and restart."
             )
-            raise FyersWebSocketClient.AuthError("Fyers token expired")
+            self._auth_failed = True
+            if self._socket:
+                try:
+                    self._socket.close_connection()
+                except Exception:
+                    pass
+            return
         logger.warning(f"Fyers WebSocket error: {message}")
 
     def _on_close(self, *args):

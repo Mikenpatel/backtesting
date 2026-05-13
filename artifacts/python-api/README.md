@@ -51,7 +51,7 @@ pricing library, every NSE data source is Python-first. The Fyers WebSocket SDK 
 FastAPI is the modern standard for Python APIs. Here is what that means practically:
 
 **Automatic documentation**
-When you run the server, go to `http://localhost:8081/docs`. You get a full interactive
+When you run the server, go to `http://localhost:8000/docs`. You get a full interactive
 API explorer — every endpoint listed, every request/response shape documented, and a
 "Try it out" button for each one. No Postman needed.
 
@@ -404,7 +404,7 @@ Your `.env` file:
 DATABASE_URL=postgresql://user:password@localhost:5432/options_trader
 FYERS_APP_ID=QWOKW94G0J-100
 FYERS_ACCESS_TOKEN=your_daily_token_here
-PORT=8081
+PORT=8000
 ```
 
 ### Step 3: Run the server
@@ -414,13 +414,13 @@ python main.py
 
 Or with auto-reload during development:
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8081 --reload
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ### Step 4: Verify it works
-- API explorer: http://localhost:8081/docs
-- Health check: http://localhost:8081/api/healthz
-- Market mode: http://localhost:8081/api/market/mode
+- API explorer: http://localhost:8000/docs
+- Health check: http://localhost:8000/api/healthz
+- Market mode: http://localhost:8000/api/market/mode
 
 ### Step 5: Stop the Node.js server
 Once the Python server is running correctly, stop the Node.js API server.
@@ -435,7 +435,7 @@ The frontend will automatically use the Python server since both serve `/api`.
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `FYERS_APP_ID` | No | Your Fyers app ID (enables live mode) |
 | `FYERS_ACCESS_TOKEN` | No | Daily access token from Fyers |
-| `PORT` | No | Server port (default: 8081) |
+| `PORT` | No | Server port (default: 8000) |
 
 **Token refresh:** Fyers tokens expire at midnight every day.
 Each morning, log into your Fyers dashboard, generate a new token,
@@ -483,7 +483,7 @@ Startup sequence:
   5. On each tick: cache.update(symbol, {ltp, open, high, low, ...})
 
 Browser connects:
-  1. Frontend opens WebSocket to ws://localhost:8081/ws
+  1. Frontend opens WebSocket to ws://localhost:8000/ws
   2. Server adds client to connected_clients set
   3. Background loop reads cache every second, broadcasts to all clients
   4. Frontend receives JSON: {"type": "quote", "symbol": "NIFTY", "ltp": 24176, ...}
@@ -561,7 +561,7 @@ SQLAlchemy models in `models/db.py` mirror this schema exactly.
 
 ## 15. API endpoints reference
 
-All endpoints are also documented interactively at `http://localhost:8081/docs`.
+All endpoints are also documented interactively at `http://localhost:8000/docs`.
 
 ### Market
 | Method | Path | Description |

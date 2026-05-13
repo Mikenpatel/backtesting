@@ -89,6 +89,19 @@ def create_strategy(body: StrategyCreate, db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------------------
+# GET /api/strategies/{id}
+# ---------------------------------------------------------------------------
+
+@router.get("/strategies/{strategy_id}")
+def get_strategy(strategy_id: int, db: Session = Depends(get_db)):
+    """Get a single strategy by ID."""
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if not strategy:
+        raise HTTPException(status_code=404, detail=f"Strategy {strategy_id} not found")
+    return _format_strategy(strategy)
+
+
+# ---------------------------------------------------------------------------
 # PATCH /api/strategies/{id}
 # ---------------------------------------------------------------------------
 
