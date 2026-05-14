@@ -382,56 +382,152 @@ This guarantees the DB connection is always closed, even if there is an exceptio
 
 ---
 
-## 8. Running locally — step by step
+## 8. Running the project
 
-### Prerequisites
-- Python 3.11 or newer (`python --version`)
-- PostgreSQL running (same DB as the Node.js backend — no migration needed)
+### On Replit (recommended — zero config)
 
-### Step 1: Install dependencies
+Both services are managed by Replit workflows and start automatically when you open the Repl.
+
+| Service | Workflow name | Port | Handles |
+|---|---|---|---|
+| Python API | `artifacts/api-server: Python API Server` | 8000 | `/api/*`, `/ws` |
+| React frontend | `artifacts/options-dashboard: web` | 25612 | `/` |
+
+A reverse proxy routes traffic so the browser only ever talks to `localhost:80`:
+```
+Browser → localhost:80/        → Vite dev server  (React app)
+Browser → localhost:80/api/*   → FastAPI           (REST endpoints)
+Browser → localhost:80/ws      → FastAPI           (WebSocket stream)
+```
+
+To start or restart a workflow from the shell:
 ```bash
-cd artifacts/python-api
-pip install -r requirements.txt
+# The Replit sidebar workflow panel is the easiest way.
+# Or restart via the shell using the Replit workflow CLI (if available).
 ```
 
-### Step 2: Configure environment
+Verify both are running:
 ```bash
-cp .env.example .env
-# Edit .env and fill in your values
+curl localhost:80/api/healthz       # → {"status":"ok"}
+curl localhost:80/api/market/mode   # → {"mode":"blocked"|"live"|"simulator",...}
 ```
 
-Your `.env` file:
+---
+
+### First-time setup (fresh clone or new environment)
+
+**Step 1: Install Node.js dependencies** (frontend + API codegen tooling)
+```bash
+pnpm install
 ```
+Run this from the **project root** (the monorepo root, not inside any artifact folder).
+
+**Step 2: Install Python dependencies**
+```bash
+pip install -r artifacts/python-api/requirements.txt
+```
+
+The key packages and what they do:
+
+| Package | Version | Purpose |
+|---|---|---|
+| `fastapi` | 0.115 | Web framework — defines routes, validation, docs |
+| `uvicorn` | 0.32 | ASGI server — runs FastAPI |
+| `sqlalchemy` | 2.0 | ORM — reads/writes PostgreSQL |
+| `psycopg2-binary` | 2.9 | PostgreSQL driver |
+| `pydantic` | 2.10 | Data validation (request/response schemas) |
+| `pydantic-settings` | 2.6 | Reads `.env` file into `Settings` object |
+| `fyers-apiv3` | 3.1 | Official Fyers SDK (REST + WebSocket) |
+| `numpy` / `scipy` | latest | Black-Scholes math (normal distribution) |
+| `python-dotenv` | 1.0 | Loads `.env` file |
+| `websockets` | 14.1 | WebSocket support for uvicorn |
+| `python-dateutil` | 2.9 | NSE expiry date parsing |
+
+**Step 3: Create the `.env` file**
+```bash
+cp artifacts/python-api/.env.example artifacts/python-api/.env
+```
+
+Edit `artifacts/python-api/.env`:
+```
+# Required — PostgreSQL connection string
 DATABASE_URL=postgresql://user:password@localhost:5432/options_trader
-FYERS_APP_ID=QWOKW94G0J-100
-FYERS_ACCESS_TOKEN=your_daily_token_here
+
+# Optional — leave blank to use the Black-Scholes simulator instead
+FYERS_APP_ID=
+FYERS_ACCESS_TOKEN=
+
+# Optional — defaults to 8000
 PORT=8000
 ```
 
-### Step 3: Run the server
+On Replit, `DATABASE_URL` is already set in the environment. Verify with:
 ```bash
-python main.py
+echo $DATABASE_URL
 ```
 
-Or with auto-reload during development:
+**Step 4: Push the database schema** (first run only, or after schema changes)
 ```bash
+pnpm --filter @workspace/db run push
+```
+This creates all tables (`trades`, `trade_legs`, `strategies`, `activity_events`, `daily_pnl`)
+if they don't exist yet. Safe to re-run — it only adds missing tables/columns.
+
+**Step 5: Start the Python API server**
+```bash
+python artifacts/python-api/main.py
+```
+
+On startup the server:
+1. Connects to PostgreSQL and creates tables if missing
+2. Seeds 6 preset strategies if the `strategies` table is empty
+3. Starts the Fyers WebSocket client in the background (if credentials are set)
+4. Begins listening on `PORT` (default 8000)
+
+**Step 6: Start the frontend dev server**
+```bash
+pnpm --filter @workspace/options-dashboard run dev
+```
+Vite starts on the port set by the `PORT` environment variable (25612 on Replit).
+On a local machine without that env var, it falls back to port 5173.
+
+**Step 7: Open the app**
+
+- On Replit: the preview pane automatically loads `/`
+- Locally: open `http://localhost:5173`
+- API explorer (interactive docs): `http://localhost:8000/docs`
+
+Check the mode badge in the top-right of the Market page:
+- **LIVE · Fyers** — WebSocket connected, real-time ticks flowing
+- **IP BLOCKED · Simulator** — credentials set but token expired or IP blocked; simulator active
+- **SIMULATOR** — no credentials configured; simulator active
+
+---
+
+### Restarting after code changes
+
+| What changed | What to do |
+|---|---|
+| Python backend code | Restart `artifacts/api-server: Python API Server` workflow |
+| Frontend code (`.tsx`, `.css`) | Nothing — Vite hot-reloads automatically |
+| `vite.config.ts` or frontend packages | `pnpm install` → restart `artifacts/options-dashboard: web` workflow |
+| `lib/api-spec/openapi.yaml` | `pnpm --filter @workspace/api-spec run codegen` → restart frontend workflow |
+| DB schema (`lib/db/src/schema/`) | `pnpm --filter @workspace/db run push` |
+| Python packages (`requirements.txt`) | `pip install -r artifacts/python-api/requirements.txt` → restart API workflow |
+| Fyers token (`.env`) | Edit `.env` → restart API workflow |
+
+---
+
+### Running the backend with auto-reload (development only)
+
+The normal `python main.py` command does not reload on file changes. For faster
+iteration while editing Python files:
+```bash
+cd artifacts/python-api
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
-
-### Step 4: Verify it works
-- API explorer: http://localhost:8000/docs
-- Health check: http://localhost:8000/api/healthz
-- Market mode: http://localhost:8000/api/market/mode
-
-### Step 5: Verify the frontend connects
-Open the dashboard in the browser. The Market page should show index quotes and a full
-option chain. The mode badge in the top-right shows the current data source:
-- **LIVE · Fyers** — real-time ticks via WebSocket
-- **IP BLOCKED · Simulator** — Fyers token expired or datacenter IP blocked, simulator active
-- **SIMULATOR** — no Fyers credentials, simulator active
-
-Note: The old Node.js API server (`artifacts/api-server/`) has already been retired.
-The artifact proxy routes `/api` directly to this Python server on port 8000.
+`--reload` watches for file changes and restarts the server automatically.
+Do not use `--reload` in production — it has higher memory overhead.
 
 ---
 
