@@ -259,7 +259,8 @@ artifacts/python-api/
 ├── core/                     ← infrastructure (boring but essential)
 │   ├── config.py             ← reads .env, exposes Settings object
 │   ├── database.py           ← creates PostgreSQL connection pool
-│   └── logger.py             ← structured JSON logging setup
+│   ├── logger.py             ← structured JSON logging setup
+│   └── response.py           ← CamelCaseJSONResponse (snake_case → camelCase)
 │
 ├── fyers/                    ← everything Fyers-specific
 │   ├── symbols.py            ← NIFTY → NSE:NIFTY50-INDEX mappings
@@ -282,7 +283,7 @@ artifacts/python-api/
 └── routes/                   ← HTTP endpoints (what the frontend calls)
     ├── market.py             ← /api/market/*
     ├── trades.py             ← /api/trades/*
-    ← /api/strategies/*
+    ├── strategies.py         ← /api/strategies/*
     ├── dashboard.py          ← /api/dashboard/*
     └── ws.py                 ← /ws (WebSocket, price stream)
 ```
@@ -422,9 +423,15 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 - Health check: http://localhost:8000/api/healthz
 - Market mode: http://localhost:8000/api/market/mode
 
-### Step 5: Stop the Node.js server
-Once the Python server is running correctly, stop the Node.js API server.
-The frontend will automatically use the Python server since both serve `/api`.
+### Step 5: Verify the frontend connects
+Open the dashboard in the browser. The Market page should show index quotes and a full
+option chain. The mode badge in the top-right shows the current data source:
+- **LIVE · Fyers** — real-time ticks via WebSocket
+- **IP BLOCKED · Simulator** — Fyers token expired or datacenter IP blocked, simulator active
+- **SIMULATOR** — no Fyers credentials, simulator active
+
+Note: The old Node.js API server (`artifacts/api-server/`) has already been retired.
+The artifact proxy routes `/api` directly to this Python server on port 8000.
 
 ---
 
@@ -589,6 +596,7 @@ All endpoints are also documented interactively at `http://localhost:8000/docs`.
 |---|---|---|
 | GET | `/api/strategies` | List all strategies |
 | POST | `/api/strategies` | Create strategy |
+| GET | `/api/strategies/:id` | Get single strategy |
 | PATCH | `/api/strategies/:id` | Update strategy |
 | DELETE | `/api/strategies/:id` | Delete strategy |
 | POST | `/api/strategies/:id/execute` | Execute strategy now |
