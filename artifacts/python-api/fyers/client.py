@@ -48,9 +48,9 @@ def get_fyers_client() -> fyersModel.FyersModel:
     We create a new instance per call rather than a singleton because
     the access token can be rotated without restarting the server.
     """
-    MY_ACCESS_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZDoxIiwiZDoyIiwieDowIiwieDoxIiwieDoyIl0sImF0X2hhc2giOiJnQUFBQUFCcUM5SzlfR3JrbmdpS1VpaXRmWTBNYUFGZXpzTkVvQmZJTTg0cEFHOUFrMm5wU1FaWFJLZE9BNVM4bXk0aGtpR1VUSDd1VnVZWFc0SWRRQW1mN2ZkR3pGS19SaUh2bDFoSS0ybHVNREhPS1hibWQ1WT0iLCJkaXNwbGF5X25hbWUiOiIiLCJvbXMiOiJLMSIsImhzbV9rZXkiOiJjNDU2MTIzY2ZlOWNiMzMyMGNkZjEwZjZkYzRiNjA5YzRkODFlOTI3MjY4MTNlZDVkNzRiZDMwYyIsImlzRGRwaUVuYWJsZWQiOiJOIiwiaXNNdGZFbmFibGVkIjoiTiIsImZ5X2lkIjoiRlAxODczIiwiYXBwVHlwZSI6MTAwLCJleHAiOjE3NzkyMzcwMDAsImlhdCI6MTc3OTE1OTc0MSwiaXNzIjoiYXBpLmZ5ZXJzLmluIiwibmJmIjoxNzc5MTU5NzQxLCJzdWIiOiJhY2Nlc3NfdG9rZW4ifQ.9rRsqDaYInMA_q7HC6ER2Kpb3Ra8Sv6FmunRU34Ap9U"
+    
     return fyersModel.FyersModel(
-        token=MY_ACCESS_TOKEN,
+        token=settings.fyers_access_token,
         client_id=settings.fyers_app_id,
         is_async=False,   # use synchronous (blocking) mode
         log_path="",      # disable SDK's own logging (we use ours)
