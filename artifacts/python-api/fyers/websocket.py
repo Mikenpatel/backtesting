@@ -107,7 +107,8 @@ class FyersWebSocketClient:
             on_connect=self._on_connect,
             reconnect=False,        # we handle reconnects ourselves
         )
-
+        
+        # Fyers internal connect method
         self._socket.connect()
 
         # Subscribe to the 4 Indian index symbols we track

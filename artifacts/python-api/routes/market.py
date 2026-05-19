@@ -27,8 +27,11 @@ from typing import Optional
 
 from market.adapter import get_quote, get_option_chain, get_expiries, get_market_mode
 from models.schemas import QuoteResponse, OptionChainResponse, MarketModeResponse
+from core.config import settings
+from fyers_apiv3 import fyersModel
 
 router = APIRouter()
+
 
 VALID_SYMBOLS = {"NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX"}
 
@@ -154,3 +157,16 @@ def market_option_chain(
         return chain
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+
+
+  
+
+
+
+
+
+
+
+

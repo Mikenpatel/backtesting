@@ -43,7 +43,8 @@ engine = create_engine(
     settings.database_url,
     pool_pre_ping=True,
     pool_size=5,         # keep 5 connections open
-    max_overflow=10,     # allow up to 10 extra connections under load
+    max_overflow=10,    # allow up to 10 extra connections under load
+    echo=True
 )
 
 # ---------------------------------------------------------------------------

@@ -10,3 +10,4 @@ numpy==2.2.0
 scipy==1.14.1
 websockets==14.1
 python-dateutil==2.9.0
+setuptools<70.0.0

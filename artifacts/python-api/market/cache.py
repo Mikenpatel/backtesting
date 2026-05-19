@@ -114,3 +114,24 @@ def mark_stale() -> None:
     """
     with _lock:
         _cache.clear()
+
+
+# Core Technical Decoupled Components
+# 1. In-Memory Caching over Databases
+# Stock market ticks generate 50–100 data packets per second during active hours. Writing every individual tick directly to a traditional database (like PostgreSQL) or a loopback caching service (like Redis) adds 1–10ms of network latency and creates massive I/O bottlenecks.
+
+# This system saves data into a native Python dictionary stored directly inside the application's RAM space, providing nanosecond read/write access.
+
+# The cache is transient (clears on restart). Since live market data is refreshed dynamically within seconds of reconnection, permanent database storage is bypassed for state data.
+
+# 2. Thread Safety with threading.Lock
+# Even though Python uses a Global Interpreter Lock (GIL) to manage single-microsecond execution, modifying a dictionary is not a single ("atomic") operation at the bytecode level. Python's interpreter automatically switches thread contexts using a 5-millisecond time slice.
+
+# Without structural safety, Thread 2 could be paused halfway through compiling an index update packet. Thread 1 would then read a malformed object, crashing the application.
+
+# A threading.Lock() object forces any thread trying to access or change the cache to acquire a structural key. If the cache is being written to, readers are safely held in line until the transaction completes perfectly.
+
+# 🎛️ Data Flow and The Callback Switchboard
+# When subscribing to multiple tickers (e.g., ["NSE:NIFTY50-INDEX", "NSE:BANKNIFTY-INDEX"]), Fyers does not send grouped lists. It transmits a continuous, rapid-fire stream of individual, isolated payload dictionaries.
+
+# The _on_message(message) client method handles this stream using a series of stringent security Guard Clauses:

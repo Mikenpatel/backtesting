@@ -170,3 +170,10 @@ The `.env` file is at `artifacts/python-api/.env`. Never commit it — it contai
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
 See `artifacts/python-api/README.md` for full Python backend documentation.
+
+To run frontend: PORT=5173  pnpm --filter @workspace/options-dashboard run dev
+BASE_PATH=/
+API_PORT=8000
+
+pip install --upgrade pip setuptools wheel
+pip install psycopg2-binary --only-binary psycopg2-binary

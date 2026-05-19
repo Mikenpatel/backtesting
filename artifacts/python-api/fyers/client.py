@@ -31,6 +31,7 @@ from fyers_apiv3 import fyersModel
 from core.config import settings
 from core.logger import get_logger
 from fyers.symbols import to_fyers, from_fyers, get_strike_interval, EXPIRY_WEEKDAY
+import re
 
 logger = get_logger(__name__)
 
@@ -47,8 +48,9 @@ def get_fyers_client() -> fyersModel.FyersModel:
     We create a new instance per call rather than a singleton because
     the access token can be rotated without restarting the server.
     """
+    MY_ACCESS_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZDoxIiwiZDoyIiwieDowIiwieDoxIiwieDoyIl0sImF0X2hhc2giOiJnQUFBQUFCcUM5SzlfR3JrbmdpS1VpaXRmWTBNYUFGZXpzTkVvQmZJTTg0cEFHOUFrMm5wU1FaWFJLZE9BNVM4bXk0aGtpR1VUSDd1VnVZWFc0SWRRQW1mN2ZkR3pGS19SaUh2bDFoSS0ybHVNREhPS1hibWQ1WT0iLCJkaXNwbGF5X25hbWUiOiIiLCJvbXMiOiJLMSIsImhzbV9rZXkiOiJjNDU2MTIzY2ZlOWNiMzMyMGNkZjEwZjZkYzRiNjA5YzRkODFlOTI3MjY4MTNlZDVkNzRiZDMwYyIsImlzRGRwaUVuYWJsZWQiOiJOIiwiaXNNdGZFbmFibGVkIjoiTiIsImZ5X2lkIjoiRlAxODczIiwiYXBwVHlwZSI6MTAwLCJleHAiOjE3NzkyMzcwMDAsImlhdCI6MTc3OTE1OTc0MSwiaXNzIjoiYXBpLmZ5ZXJzLmluIiwibmJmIjoxNzc5MTU5NzQxLCJzdWIiOiJhY2Nlc3NfdG9rZW4ifQ.9rRsqDaYInMA_q7HC6ER2Kpb3Ra8Sv6FmunRU34Ap9U"
     return fyersModel.FyersModel(
-        token=settings.fyers_auth_token,
+        token=MY_ACCESS_TOKEN,
         client_id=settings.fyers_app_id,
         is_async=False,   # use synchronous (blocking) mode
         log_path="",      # disable SDK's own logging (we use ours)
@@ -161,9 +163,9 @@ def get_option_chain(symbol: str, expiry: str) -> dict:
     if response.get("s") != "ok":
         raise RuntimeError(f"Fyers optionchain error: {response}")
 
-    d = response.get("d", {})
+    d = response.get("data", {})
     expiry_data_list = d.get("expiryData", [])
-    underlying_ltp = d.get("underlyingValue", 0)
+    underlying_ltp = d.get("optionsChain", [])[0].get("ltp", 0)
 
     if not expiry_data_list:
         raise RuntimeError(f"No option chain data for {symbol}")
@@ -172,44 +174,79 @@ def get_option_chain(symbol: str, expiry: str) -> dict:
     interval = get_strike_interval(symbol)
     atm_strike = round(underlying_ltp / interval) * interval
 
-    # Parse the options chain into our internal format
-    # Fyers returns a list of option legs, each with symbol name and values
-    strike_map: dict[int, dict] = {}
-    for leg in expiry_data.get("optionsChain", []):
-        name = leg.get("n", "")
-        v = leg.get("v", {})
+        # Parse the option chain data into our internal format
+    symbol = d.get("optionsChain", [])[0].get("symbol", "")
+    
+    option_chain = d.get("optionsChain", [])[1:]
 
-        parsed = _parse_strike_from_symbol(name)
-        if not parsed:
-            continue
-
-        strike, option_type = parsed
-        if strike not in strike_map:
+    option_type = option_chain[0].get("symbol")[-2:]
+    print(option_type)
+    strike_map = {}
+    for leg in option_chain: 
+        print(leg)
+        
+        strike = leg.get('strike_price')
+        if strike not in strike_map: 
             strike_map[strike] = {
-                "strike": strike,
+                "strike": leg.get('strike_price'),
                 "call_ltp": 0.0, "call_oi": 0, "call_volume": 0,
-                "call_iv": 0.0, "call_delta": 0.0, "call_theta": 0.0, "call_vega": 0.0,
                 "put_ltp":  0.0, "put_oi":  0, "put_volume":  0,
-                "put_iv":  0.0, "put_delta":  0.0, "put_theta":  0.0, "put_vega":  0.0,
             }
-
+        
         prefix = "call" if option_type == "CE" else "put"
-        strike_map[strike][f"{prefix}_ltp"]    = round(v.get("ltp", 0), 2)
-        strike_map[strike][f"{prefix}_oi"]     = int(v.get("oi", 0))
-        strike_map[strike][f"{prefix}_volume"] = int(v.get("volume", 0))
-        strike_map[strike][f"{prefix}_iv"]     = round(v.get("iv", 0) * 100, 2)
-        strike_map[strike][f"{prefix}_delta"]  = round(v.get("delta", 0), 3)
-        strike_map[strike][f"{prefix}_theta"]  = round(v.get("theta", 0), 2)
-        strike_map[strike][f"{prefix}_vega"]   = round(v.get("vega", 0), 2)
+        strike_map[strike][f"{prefix}_ltp"] = round(leg.get("ltp", 0.0), 2)
+        strike_map[strike][f"{prefix}_oi"] = round(leg.get("oi", 0.0), 2)
+        strike_map[strike][f"{prefix}_volume"] = round(leg.get("volume", 0.0), 2)
+        # break
 
     strikes = sorted(strike_map.values(), key=lambda x: x["strike"])
+    ex_symbol = d.get("optionsChain", [])[0].get("ex_symbol", "")
     return {
-        "symbol":          symbol,
-        "expiry":          expiry,
-        "underlying_ltp":  underlying_ltp,
-        "atm_strike":      atm_strike,
-        "strikes":         strikes,
+        "symbol": ex_symbol,
+        "expiry": "19MAY26",
+        "underlying_ltp": underlying_ltp,
+        "atm_strike": atm_strike,
+        "strikes": strikes,
     }
+
+    # # Parse the options chain into our internal format
+    # # Fyers returns a list of option legs, each with symbol name and values
+    # strike_map: dict[int, dict] = {}
+    # for leg in expiry_data.get("optionsChain", []):
+    #     name = leg.get("n", "")
+    #     v = leg.get("v", {})
+
+    #     parsed = _parse_strike_from_symbol(name)
+    #     if not parsed:
+    #         continue
+
+    #     strike, option_type = parsed
+    #     if strike not in strike_map:
+    #         strike_map[strike] = {
+    #             "strike": strike,
+    #             "call_ltp": 0.0, "call_oi": 0, "call_volume": 0,
+    #             "call_iv": 0.0, "call_delta": 0.0, "call_theta": 0.0, "call_vega": 0.0,
+    #             "put_ltp":  0.0, "put_oi":  0, "put_volume":  0,
+    #             "put_iv":  0.0, "put_delta":  0.0, "put_theta":  0.0, "put_vega":  0.0,
+    #         }
+
+    #     prefix = "call" if option_type == "CE" else "put"
+    #     strike_map[strike][f"{prefix}_ltp"]    = round(v.get("ltp", 0), 2)
+    #     strike_map[strike][f"{prefix}_oi"]     = int(v.get("oi", 0))
+    #     strike_map[strike][f"{prefix}_volume"] = int(v.get("volume", 0))
+    #     strike_map[strike][f"{prefix}_iv"]     = round(v.get("iv", 0) * 100, 2)
+    #     strike_map[strike][f"{prefix}_delta"]  = round(v.get("delta", 0), 3)
+    #     strike_map[strike][f"{prefix}_theta"]  = round(v.get("theta", 0), 2)
+    #     strike_map[strike][f"{prefix}_vega"]   = round(v.get("vega", 0), 2)
+
+    # strikes = sorted(strike_map.values(), key=lambda x: x["strike"])
+    # return {
+    #     "symbol":          symbol,
+    #     "expiry":          expiry,
+    #     "underlying_ltp":  underlying_ltp,
+    #     "atm_strike":      atm_strike,
+    #     "strikes":         strikes,
+    # }
 
 
 # ---------------------------------------------------------------------------
