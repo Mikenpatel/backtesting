@@ -25,7 +25,17 @@ They often look similar but are deliberately separate:
 from __future__ import annotations
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
+
+
+class CamelRequest(BaseModel):
+    """
+    Base class for all request-body models.
+    Accepts both camelCase (from the React frontend) and snake_case field names.
+    populate_by_name=True lets both forms work simultaneously.
+    """
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +94,7 @@ class OptionChainResponse(BaseModel):
 # Trade models
 # ---------------------------------------------------------------------------
 
-class TradeLegCreate(BaseModel):
+class TradeLegCreate(CamelRequest):
     """One leg when creating a new trade"""
     symbol:      str
     option_type: str    # CE | PE
@@ -96,7 +106,7 @@ class TradeLegCreate(BaseModel):
     lot_size:    int
 
 
-class TradeCreate(BaseModel):
+class TradeCreate(CamelRequest):
     """Request body for POST /api/trades"""
     strategy_type:      str
     strategy_frequency: Optional[str] = None
@@ -110,7 +120,7 @@ class TradeCreate(BaseModel):
     legs:               List[TradeLegCreate]
 
 
-class TradeUpdate(BaseModel):
+class TradeUpdate(CamelRequest):
     """Request body for PATCH /api/trades/:id — all fields optional"""
     notes:            Optional[str]   = None
     capital_deployed: Optional[float] = None
@@ -164,7 +174,7 @@ class TradeResponse(BaseModel):
 # Strategy models
 # ---------------------------------------------------------------------------
 
-class StrategyCreate(BaseModel):
+class StrategyCreate(CamelRequest):
     """Request body for POST /api/strategies"""
     name:                   str
     strategy_type:          str
@@ -184,7 +194,7 @@ class StrategyCreate(BaseModel):
     exit_time_ist:          Optional[str] = None
 
 
-class StrategyUpdate(BaseModel):
+class StrategyUpdate(CamelRequest):
     """Request body for PATCH /api/strategies/:id — all optional"""
     name:                   Optional[str]   = None
     is_active:              Optional[bool]  = None
