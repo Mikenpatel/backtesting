@@ -16,6 +16,7 @@ FastAPI lifespan (replaces deprecated @app.on_event):
 import asyncio
 import threading
 import uvicorn
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -95,7 +96,22 @@ async def lifespan(app: FastAPI):
     broadcast_task.cancel()
     logger.info("Server shutting down")
 
+    try:
+        await broadcast_task
+    except asyncio.CancelledError:
+        pass
 
+    # 2. Force-close the Fyers Thread Connection
+    if fyers_client:
+        logger.info("Closing Fyers WebSocket connection...")
+        try:
+            # Note: Depending on your custom wrapper or Fyers version, 
+            # this might be fyers_client.close_connection() or fyers_client.ws.close()
+            fyers_client.close_connection() 
+        except Exception as e:
+            logger.error(f"Error while closing Fyers WebSocket: {e}")
+
+    os._exit(0)  # Force exit to kill any lingering threads (like Fyers SDK)
 # ---------------------------------------------------------------------------
 # Create the FastAPI application
 # ---------------------------------------------------------------------------

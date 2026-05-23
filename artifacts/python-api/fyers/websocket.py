@@ -64,29 +64,29 @@ class FyersWebSocketClient:
         We stop reconnecting and log a clear message instead of burning CPU
         in a tight loop.
         """
-        while True:
-            if self._auth_failed:
-                logger.error(
-                    "Fyers token expired. Update FYERS_ACCESS_TOKEN in .env "
-                    "and restart the server."
-                )
-                return   # stop thread — no point retrying with a bad token
+        # while True:
+        if self._auth_failed:
+            logger.error(
+                "Fyers token expired. Update FYERS_ACCESS_TOKEN in .env "
+                "and restart the server."
+            )
+            return   # stop thread — no point retrying with a bad token
 
-            try:
-                logger.info("Connecting to Fyers WebSocket...")
-                self._connect()
-            except FyersWebSocketClient.AuthError:
-                self._auth_failed = True
-                # loop immediately → hits the guard above and exits
-            except Exception as e:
-                self.reconnect_count += 1
-                wait = min(30, 5 * self.reconnect_count)
-                logger.warning(
-                    f"Fyers WebSocket disconnected: {e}. "
-                    f"Reconnecting in {wait}s (attempt {self.reconnect_count})"
-                )
-                cache.mark_stale()
-                time.sleep(wait)
+        try:
+            logger.info("Connecting to Fyers WebSocket...")
+            self._connect()
+        except FyersWebSocketClient.AuthError:
+            self._auth_failed = True
+            # loop immediately → hits the guard above and exits
+        except Exception as e:
+            self.reconnect_count += 1
+            wait = min(30, 5 * self.reconnect_count)
+            logger.warning(
+                f"Fyers WebSocket disconnected: {e}. "
+                f"Reconnecting in {wait}s (attempt {self.reconnect_count})"
+            )
+            cache.mark_stale()
+            time.sleep(wait)
 
     def _connect(self):
         """

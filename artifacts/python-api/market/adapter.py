@@ -116,6 +116,7 @@ def get_quote(symbol: str) -> dict:
       3. Black-Scholes simulator (if Fyers is unavailable)
     """
     # Try WebSocket cache first (fastest path)
+    logger.info("Inside live mode")
     if settings.is_live_mode and cache.has_fresh_data(symbol):
         logger.info("Inside live mode")
         data = cache.get(symbol)
@@ -125,16 +126,16 @@ def get_quote(symbol: str) -> dict:
 
     # Try Fyers REST as fallback for live mode
     if settings.is_live_mode:
-        # try:
+        try:
             result = fyers_client.get_quote(symbol)
             logger.info("I am inside live mode")
             _record_success()
             # Also populate the cache so /ws clients get it
             cache.update(symbol, result)
             return result
-        # except Exception as e:
-            # _record_failure(e)
-            # logger.warning(f"Fyers get_quote failed for {symbol}: {e} — using simulator")
+        except Exception as e:
+            _record_failure(e)
+            logger.warning(f"Fyers get_quote failed for {symbol}: {e} — using simulator")
 
     # Simulator fallback
     return sim.get_quote(symbol)

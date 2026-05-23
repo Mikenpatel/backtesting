@@ -133,7 +133,7 @@ def get_expiries(symbol: str) -> list[str]:
     return expiries[:6]   # return at most 6 upcoming expiries
 
 
-def get_option_chain(symbol: str, expiry: str) -> dict:
+def get_option_chain(symbol: str, expiry: str | None) -> dict:
     """
     Fetch the full option chain for a given underlying and expiry.
 
@@ -156,7 +156,7 @@ def get_option_chain(symbol: str, expiry: str) -> dict:
     # If specific expiry requested, convert to unix timestamp
     if expiry:
         expiry_dt = _parse_expiry(expiry)
-        params["timestamp"] = str(int(expiry_dt.timestamp()))
+        # params["timestamp"] = str(int(expiry_dt.timestamp()))
 
     response = client.optionchain(params)
 
@@ -179,12 +179,12 @@ def get_option_chain(symbol: str, expiry: str) -> dict:
     
     option_chain = d.get("optionsChain", [])[1:]
 
-    option_type = option_chain[0].get("symbol")[-2:]
-    print(option_type)
+    # option_type = option_chain[0].get("symbol")[-2:]
+    # print(option_type)
     strike_map = {}
     for leg in option_chain: 
         print(leg)
-        
+        option_type = leg.get("symbol", "")[-2:]
         strike = leg.get('strike_price')
         if strike not in strike_map: 
             strike_map[strike] = {
@@ -203,7 +203,7 @@ def get_option_chain(symbol: str, expiry: str) -> dict:
     ex_symbol = d.get("optionsChain", [])[0].get("ex_symbol", "")
     return {
         "symbol": ex_symbol,
-        "expiry": "19MAY26",
+        "expiry": "5MAY26",
         "underlying_ltp": underlying_ltp,
         "atm_strike": atm_strike,
         "strikes": strikes,

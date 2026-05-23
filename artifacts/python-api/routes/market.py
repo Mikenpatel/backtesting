@@ -22,7 +22,7 @@ Error handling:
   FastAPI catches this and returns {"detail": "message"} with status 400.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, logger
 from typing import Optional
 
 from market.adapter import get_quote, get_option_chain, get_expiries, get_market_mode
@@ -129,7 +129,8 @@ def market_expiries(symbol: str = Query(default="NIFTY")):
 # Option chain
 # ---------------------------------------------------------------------------
 
-@router.get("/market/option-chain", response_model=OptionChainResponse)
+# @router.get("/market/option-chain", response_model=OptionChainResponse)
+@router.get("/market/option-chain")
 def market_option_chain(
     symbol: str = Query(default="NIFTY"),
     expiry: str = Query(default="", description="e.g. 14MAY26"),
