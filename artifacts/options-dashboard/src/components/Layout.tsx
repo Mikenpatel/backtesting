@@ -1,9 +1,10 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, TrendingUp, Settings2, BarChart2, Plus, FileText } from "lucide-react";
+import { LayoutDashboard, TrendingUp, Settings2, BarChart2, Plus, FileText, Layers } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/trades", label: "Trades", icon: TrendingUp },
+  { href: "/chain-builder", label: "Strategy Builder", icon: Layers },
   { href: "/strategies", label: "Strategies", icon: Settings2 },
   { href: "/market", label: "Market", icon: BarChart2 },
   { href: "/pnl", label: "P&L Statement", icon: FileText },
