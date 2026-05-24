@@ -7,9 +7,10 @@ import {
   useCloseTrade,
   useDeleteTrade,
 } from "@workspace/api-client-react";
+import type { Trade, TradeLeg } from "@workspace/api-client-react";
 import { ChevronDown, ChevronRight, Plus, X, Check } from "lucide-react";
 
-function PnlValue({ value, label }: { value: number | null; label?: string }) {
+function PnlValue({ value, label }: { value: number | null | undefined; label?: string }) {
   if (value == null) return <span className="text-muted-foreground font-mono-num">—</span>;
   const cls = value > 0 ? "profit" : value < 0 ? "loss" : "text-muted-foreground";
   return (
@@ -21,7 +22,7 @@ function PnlValue({ value, label }: { value: number | null; label?: string }) {
 }
 
 function TradeRow({ trade, onClose, onDelete }: {
-  trade: NonNullable<ReturnType<typeof useListTrades>["data"]>[0];
+  trade: Trade;
   onClose: (id: number) => void;
   onDelete: (id: number) => void;
 }) {
@@ -102,7 +103,7 @@ function TradeRow({ trade, onClose, onDelete }: {
                   </tr>
                 </thead>
                 <tbody>
-                  {trade.legs.map((leg) => (
+                  {trade.legs.map((leg: TradeLeg) => (
                     <tr key={leg.id} className="border-b border-border/50 last:border-0">
                       <td className="px-3 py-2 font-medium">{leg.symbol}</td>
                       <td className="px-3 py-2">

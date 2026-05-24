@@ -24,11 +24,13 @@ import type {
   ExpiriesResponse,
   GetExpiriesParams,
   GetMarketQuoteParams,
+  GetMultiOptionChainParams,
   GetOptionChainParams,
   HealthStatus,
   ListTradesParams,
   MarketMode,
   MarketQuote,
+  MultiOptionChain,
   OptionChain,
   PnlChartPoint,
   RefreshPnlResponse,
@@ -378,6 +380,109 @@ export function useGetOptionChain<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetOptionChainQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get option chains for multiple expiries in one call
+ */
+export const getGetMultiOptionChainUrl = (
+  params: GetMultiOptionChainParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/market/multi-option-chain?${stringifiedParams}`
+    : `/api/market/multi-option-chain`;
+};
+
+export const getMultiOptionChain = async (
+  params: GetMultiOptionChainParams,
+  options?: RequestInit,
+): Promise<MultiOptionChain> => {
+  return customFetch<MultiOptionChain>(getGetMultiOptionChainUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetMultiOptionChainQueryKey = (
+  params?: GetMultiOptionChainParams,
+) => {
+  return [
+    `/api/market/multi-option-chain`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetMultiOptionChainQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMultiOptionChain>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetMultiOptionChainParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMultiOptionChain>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetMultiOptionChainQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMultiOptionChain>>
+  > = ({ signal }) =>
+    getMultiOptionChain(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMultiOptionChain>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMultiOptionChainQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMultiOptionChain>>
+>;
+export type GetMultiOptionChainQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get option chains for multiple expiries in one call
+ */
+
+export function useGetMultiOptionChain<
+  TData = Awaited<ReturnType<typeof getMultiOptionChain>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetMultiOptionChainParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMultiOptionChain>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMultiOptionChainQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

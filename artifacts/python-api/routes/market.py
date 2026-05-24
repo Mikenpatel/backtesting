@@ -163,13 +163,12 @@ def market_option_chain(
 
 @router.get("/market/multi-option-chain")
 def market_multi_option_chain(symbol: str = Query(default="NIFTY"), count: int = Query(default=6)):
-        symbol = _validate_symbol(symbol)
-
-        try:
-            chain = get_multi_expiry_option_chain(symbol, count)
-            return chain
-        except Exception as e:
-            raise HTTPException(status_code=502, detail=str(e))
+    symbol = _validate_symbol(symbol)
+    try:
+        chain = get_multi_expiry_option_chain(symbol, count)
+        return chain
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 

@@ -2,13 +2,11 @@ import { useState, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
-  useGetExpiries,
-  useGetOptionChain,
+  useGetMultiOptionChain,
   useGetMarketQuote,
   useCreateTrade,
   getListTradesQueryKey,
-  getGetExpiriesQueryKey,
-  getGetOptionChainQueryKey,
+  getGetMultiOptionChainQueryKey,
   getGetMarketQuoteQueryKey,
 } from "@workspace/api-client-react";
 import type { OptionStrike } from "@workspace/api-client-react";
@@ -71,8 +69,8 @@ const CHAIN_COLS: ChainCol[] = [
   {
     key: "iv",
     header: "IV%",
-    callRender: (s) => (s.callIv ?? 0* 100).toFixed(1) + "%",
-    putRender:  (s) => (s.putIv ?? 0* 100).toFixed(1) + "%",
+    callRender: (s) => ((s.callIv ?? 0) * 100).toFixed(1) + "%",
+    putRender:  (s) => ((s.putIv ?? 0) * 100).toFixed(1) + "%",
     align: "right",
     callCls: "text-blue-400",
     putCls:  "text-blue-400",
@@ -104,6 +102,7 @@ const CHAIN_COLS: ChainCol[] = [
 type BasketLeg = {
   id: string;
   strike: number;
+  expiry: string;
   type: "CE" | "PE";
   action: "BUY" | "SELL";
   ltp: number;
@@ -150,25 +149,18 @@ export default function StrategyBuilder() {
   const qc = useQueryClient();
   const [, navigate] = useLocation();
 
-  // Fetch expiries
-  const { data: expiriesData, isLoading: expiriesLoading } = useGetExpiries(
+  // Fetch all expiries + chains in one call
+  const { data: multiData, isLoading: chainLoading } = useGetMultiOptionChain(
     { symbol },
-    { query: { queryKey: getGetExpiriesQueryKey({ symbol }), refetchInterval: 60_000 } }
+    { query: { queryKey: getGetMultiOptionChainQueryKey({ symbol }), refetchInterval: 15_000 } }
   );
-   
-  console.log(expiriesData)
-  const expiries = expiriesData?.expiries ?? [];
+
+  const expiries = multiData?.availableExpiries ?? [];
 
   // Auto-select first expiry when symbol or expiry list changes
   const activeExpiry = selectedExpiry && expiries.includes(selectedExpiry)
     ? selectedExpiry
     : expiries[0] ?? "";
-
-  // Fetch option chain
-  const { data: chainData, isLoading: chainLoading } = useGetOptionChain(
-    { symbol, expiry: activeExpiry },
-    { query: { queryKey: getGetOptionChainQueryKey({ symbol, expiry: activeExpiry }), enabled: !!activeExpiry, refetchInterval: 15_000 } }
-  );
 
   // Fetch spot price
   const { data: quote } = useGetMarketQuote(
@@ -197,10 +189,10 @@ export default function StrategyBuilder() {
   const lotSize = LOT_SIZES[symbol];
 
   // Basket helpers
-  function addLeg(strike: number, type: "CE" | "PE", ltp: number, action: "BUY" | "SELL") {
-    const id = `${strike}-${type}-${action}`;
+  function addLeg(strike: number, type: "CE" | "PE", ltp: number, action: "BUY" | "SELL", expiry: string) {
+    const id = `${expiry}-${strike}-${type}-${action}`;
     if (basket.find((b) => b.id === id)) return;
-    setBasket((prev) => [...prev, { id, strike, type, action, ltp, lots: 1 }]);
+    setBasket((prev) => [...prev, { id, strike, expiry, type, action, ltp, lots: 1 }]);
   }
 
   function removeLeg(id: string) {
@@ -223,9 +215,9 @@ export default function StrategyBuilder() {
     );
   }
 
-  // Is a given strike/type already in basket?
-  function inBasket(strike: number, type: "CE" | "PE") {
-    return basket.some((b) => b.strike === strike && b.type === type);
+  // Is a given strike/type/expiry already in basket?
+  function inBasket(strike: number, type: "CE" | "PE", expiry: string) {
+    return basket.some((b) => b.strike === strike && b.type === type && b.expiry === expiry);
   }
 
   // Net premium calculation
@@ -251,7 +243,7 @@ export default function StrategyBuilder() {
           symbol,
           optionType: b.type,
           strike: b.strike,
-          expiry: activeExpiry,
+          expiry: b.expiry,
           action: b.action,
           quantity: b.lots,
           entryPrice: b.ltp,
@@ -261,8 +253,8 @@ export default function StrategyBuilder() {
     });
   }
 
-  const strikes = chainData?.strikes ?? [];
-  const atmStrike = chainData?.atmStrike ?? 0;
+  const strikes = (multiData?.chains as Record<string, OptionStrike[]> | undefined)?.[activeExpiry] ?? [];
+  const atmStrike = multiData?.atmStrike ?? 0;
 
   // Format expiry label for display
   function fmtExpiry(raw: string) {
@@ -347,7 +339,7 @@ export default function StrategyBuilder() {
       {/* Expiry tabs */}
       <div className="flex-none border-b border-border bg-sidebar px-6 py-2 flex items-center gap-1 flex-wrap">
         <span className="text-xs text-muted-foreground mr-1">Expiry:</span>
-        {expiriesLoading && <span className="text-xs text-muted-foreground">Loading…</span>}
+        {chainLoading && expiries.length === 0 && <span className="text-xs text-muted-foreground">Loading…</span>}
         {expiries.map((exp) => {
           const flag = expiryFlag(exp);
           const isActive = activeExpiry === exp;
@@ -426,8 +418,8 @@ export default function StrategyBuilder() {
               <tbody>
                 {strikes.map((row) => {
                   const isAtm = row.strike === atmStrike;
-                  const ceActive = inBasket(row.strike, "CE");
-                  const peActive = inBasket(row.strike, "PE");
+                  const ceActive = inBasket(row.strike, "CE", activeExpiry);
+                  const peActive = inBasket(row.strike, "PE", activeExpiry);
 
                   return (
                     <tr
@@ -447,8 +439,8 @@ export default function StrategyBuilder() {
                       {/* CE add buttons */}
                       <td className="px-2 py-2 text-center border-r border-border">
                         <div className="flex gap-1 justify-center">
-                          <ActionBtn label="S" active={ceActive} onClick={() => addLeg(row.strike, "CE", row.callLtp, "SELL")} />
-                          <ActionBtn label="B" active={ceActive} onClick={() => addLeg(row.strike, "CE", row.callLtp, "BUY")} />
+                          <ActionBtn label="S" active={ceActive} onClick={() => addLeg(row.strike, "CE", row.callLtp, "SELL", activeExpiry)} />
+                          <ActionBtn label="B" active={ceActive} onClick={() => addLeg(row.strike, "CE", row.callLtp, "BUY", activeExpiry)} />
                         </div>
                       </td>
 
@@ -461,8 +453,8 @@ export default function StrategyBuilder() {
                       {/* PE add buttons */}
                       <td className="px-2 py-2 text-center border-l border-border">
                         <div className="flex gap-1 justify-center">
-                          <ActionBtn label="S" active={peActive} onClick={() => addLeg(row.strike, "PE", row.putLtp, "SELL")} />
-                          <ActionBtn label="B" active={peActive} onClick={() => addLeg(row.strike, "PE", row.putLtp, "BUY")} />
+                          <ActionBtn label="S" active={peActive} onClick={() => addLeg(row.strike, "PE", row.putLtp, "SELL", activeExpiry)} />
+                          <ActionBtn label="B" active={peActive} onClick={() => addLeg(row.strike, "PE", row.putLtp, "BUY", activeExpiry)} />
                         </div>
                       </td>
 
@@ -543,6 +535,7 @@ export default function StrategyBuilder() {
                           }`}>
                             {leg.type}
                           </span>
+                          <span className="text-[10px] text-muted-foreground">{fmtExpiry(leg.expiry)}</span>
                         </div>
                         <button
                           onClick={() => removeLeg(leg.id)}
@@ -646,7 +639,7 @@ export default function StrategyBuilder() {
 
             {basket.length > 0 && !createTrade.isPending && (
               <p className="text-[10px] text-muted-foreground text-center">
-                {symbol} · {fmtExpiry(activeExpiry)} · {basket.length} legs
+                {symbol} · {basket.length} leg{basket.length > 1 ? "s" : ""} across {new Set(basket.map(b => b.expiry)).size} expir{new Set(basket.map(b => b.expiry)).size === 1 ? "y" : "ies"}
               </p>
             )}
           </div>

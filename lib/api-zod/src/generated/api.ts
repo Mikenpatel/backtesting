@@ -77,6 +77,45 @@ export const GetOptionChainResponse = zod.object({
 });
 
 /**
+ * @summary Get option chains for multiple expiries in one call
+ */
+export const getMultiOptionChainQueryCountDefault = 6;
+
+export const GetMultiOptionChainQueryParams = zod.object({
+  symbol: zod.enum(["NIFTY", "BANKNIFTY", "FINNIFTY"]),
+  count: zod.coerce.number().default(getMultiOptionChainQueryCountDefault),
+});
+
+export const GetMultiOptionChainResponse = zod.object({
+  symbol: zod.string(),
+  underlyingLtp: zod.number(),
+  atmStrike: zod.number(),
+  availableExpiries: zod.array(zod.string()),
+  chains: zod.record(
+    zod.string(),
+    zod.array(
+      zod.object({
+        strike: zod.number(),
+        callLtp: zod.number(),
+        callOi: zod.number(),
+        callVolume: zod.number(),
+        callIv: zod.number(),
+        callDelta: zod.number(),
+        callTheta: zod.number(),
+        callVega: zod.number(),
+        putLtp: zod.number(),
+        putOi: zod.number(),
+        putVolume: zod.number(),
+        putIv: zod.number(),
+        putDelta: zod.number(),
+        putTheta: zod.number(),
+        putVega: zod.number(),
+      }),
+    ),
+  ),
+});
+
+/**
  * @summary Get available expiry dates for an underlying
  */
 export const GetExpiriesQueryParams = zod.object({

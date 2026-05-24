@@ -209,13 +209,20 @@ def get_option_chain(symbol: str, expiry_epoch_time: str | None) -> dict:
 
 
 def get_multi_expiry_option_chains(symbol: str, count: int = 6) -> dict:
+    """
+    Fetch option chains for multiple expiries in one function.
 
+    Strategy:
+      1. Call Fyers optionchain with strikecount=1 (minimal) just to get the expiry list.
+      2. Loop through each expiry and call get_option_chain for the full strikes.
+      3. Return all chains keyed by expiry date string.
+    """
     fyers_symbol = to_fyers(symbol)
     client = get_fyers_client()
 
     response = client.optionchain({
         "symbol": fyers_symbol,
-        "strikecount": 1,   # minimal — we only want expiries
+        "strikecount": 1,   # minimal — we only want the expiry list here
     })
 
     if response.get("s") != "ok":
@@ -223,66 +230,28 @@ def get_multi_expiry_option_chains(symbol: str, count: int = 6) -> dict:
 
     expiry_data = response.get("data", {}).get("expiryData", [])[:count]
 
-    expiries = [ i['date'] for i in expiry_data ]
+    # Build expiry date list from the response (reused in the final payload)
+    expiries = [item["date"] for item in expiry_data]
 
-    options_chain = {}
-    for item in expiry_data: 
+    # Fetch full chain for each expiry
+    chains: dict = {}
+    first_chain: dict = {}
+    for item in expiry_data:
         epoch_expiry_time = item.get("expiry")
-        print(f"epoch expiry time: {epoch_expiry_time}")
-        expiry_single_date = get_option_chain(symbol, epoch_expiry_time)
-        print(f"expiry data of single data, {expiry_single_date} ")
-        options_chain[item.get("date")] = expiry_single_date.get("strikes", []) 
-    
-    final_payload = {
-        "symbol": symbol,
-        "underlying_ltp": expiry_single_date.get("underlying_ltp"),
-         "atm_strike": expiry_single_date.get("atm_strike"),
-         "available_expiries": get_expiries(symbol, count),
-         "chains": options_chain
-        }
-    return final_payload
+        logger.debug(f"Fetching chain for expiry epoch={epoch_expiry_time}")
+        chain = get_option_chain(symbol, epoch_expiry_time)
+        logger.debug(f"Got {len(chain.get('strikes', []))} strikes for {item.get('date')}")
+        chains[item["date"]] = chain.get("strikes", [])
+        if not first_chain:
+            first_chain = chain   # capture spot/ATM from the nearest expiry
 
-
-
-
-    # # Parse the options chain into our internal format
-    # # Fyers returns a list of option legs, each with symbol name and values
-    # strike_map: dict[int, dict] = {}
-    # for leg in expiry_data.get("optionsChain", []):
-    #     name = leg.get("n", "")
-    #     v = leg.get("v", {})
-
-    #     parsed = _parse_strike_from_symbol(name)
-    #     if not parsed:
-    #         continue
-
-    #     strike, option_type = parsed
-    #     if strike not in strike_map:
-    #         strike_map[strike] = {
-    #             "strike": strike,
-    #             "call_ltp": 0.0, "call_oi": 0, "call_volume": 0,
-    #             "call_iv": 0.0, "call_delta": 0.0, "call_theta": 0.0, "call_vega": 0.0,
-    #             "put_ltp":  0.0, "put_oi":  0, "put_volume":  0,
-    #             "put_iv":  0.0, "put_delta":  0.0, "put_theta":  0.0, "put_vega":  0.0,
-    #         }
-
-    #     prefix = "call" if option_type == "CE" else "put"
-    #     strike_map[strike][f"{prefix}_ltp"]    = round(v.get("ltp", 0), 2)
-    #     strike_map[strike][f"{prefix}_oi"]     = int(v.get("oi", 0))
-    #     strike_map[strike][f"{prefix}_volume"] = int(v.get("volume", 0))
-    #     strike_map[strike][f"{prefix}_iv"]     = round(v.get("iv", 0) * 100, 2)
-    #     strike_map[strike][f"{prefix}_delta"]  = round(v.get("delta", 0), 3)
-    #     strike_map[strike][f"{prefix}_theta"]  = round(v.get("theta", 0), 2)
-    #     strike_map[strike][f"{prefix}_vega"]   = round(v.get("vega", 0), 2)
-
-    # strikes = sorted(strike_map.values(), key=lambda x: x["strike"])
-    # return {
-    #     "symbol":          symbol,
-    #     "expiry":          expiry,
-    #     "underlying_ltp":  underlying_ltp,
-    #     "atm_strike":      atm_strike,
-    #     "strikes":         strikes,
-    # }
+    return {
+        "symbol":            symbol,
+        "underlyingLtp":     first_chain.get("underlyingLtp"),
+        "atmStrike":         first_chain.get("atmStrike"),
+        "availableExpiries": expiries,
+        "chains":            chains,
+    }
 
 
 # ---------------------------------------------------------------------------

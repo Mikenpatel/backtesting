@@ -90,6 +90,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/OptionChain"
 
+  /market/multi-option-chain:
+    get:
+      operationId: getMultiOptionChain
+      tags: [market]
+      summary: Get option chains for multiple expiries in one call
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [NIFTY, BANKNIFTY, FINNIFTY]
+        - name: count
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 6
+      responses:
+        "200":
+          description: Multi-expiry option chain data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MultiOptionChain"
+
   /market/expiries:
     get:
       operationId: getExpiries
@@ -564,6 +590,32 @@ components:
         - underlyingLtp
         - atmStrike
         - strikes
+
+    MultiOptionChain:
+      type: object
+      properties:
+        symbol:
+          type: string
+        underlyingLtp:
+          type: number
+        atmStrike:
+          type: number
+        availableExpiries:
+          type: array
+          items:
+            type: string
+        chains:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: "#/components/schemas/OptionStrike"
+      required:
+        - symbol
+        - underlyingLtp
+        - atmStrike
+        - availableExpiries
+        - chains
 
     ExpiriesResponse:
       type: object

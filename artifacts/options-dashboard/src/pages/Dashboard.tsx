@@ -76,7 +76,7 @@ export default function Dashboard() {
           <p className="text-sm text-muted-foreground mt-0.5">Portfolio overview — NSE paper trading</p>
         </div>
         <button
-          onClick={() => refreshPnl.mutate({})}
+          onClick={() => refreshPnl.mutate()}
           disabled={refreshPnl.isPending}
           className="flex items-center gap-2 px-3 py-1.5 text-sm bg-secondary hover:bg-secondary/80 rounded transition-colors text-secondary-foreground"
         >

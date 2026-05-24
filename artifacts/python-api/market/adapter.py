@@ -162,17 +162,39 @@ def get_option_chain(symbol: str, expiry: str) -> dict:
 
 def get_multi_expiry_option_chain(symbol: str, expiry_count: int = 6) -> dict:
     """
-    I will write this later
+    Fetch option chains for multiple expiries at once.
+    Returns chains keyed by expiry date string.
+    Falls back to simulator when Fyers is unavailable.
     """
     if settings.is_live_mode:
-        try: 
+        try:
             result = fyers_client.get_multi_expiry_option_chains(symbol, expiry_count)
             _record_success()
             return result
         except Exception as e:
             _record_failure(e)
-            logger.warning(f"Fyers get_option_chain failed for {symbol}: {e} — using simulator")
-    return {"msg": "We are running on simulated env"}     
+            logger.warning(f"Fyers get_multi_expiry_option_chain failed for {symbol}: {e} — using simulator")
+
+    # Simulator fallback — build multi-expiry chain from individual calls
+    expiries = sim.get_expiries(symbol)[:expiry_count]
+    chains = {}
+    atm_strike = None
+    underlying_ltp = None
+
+    for expiry in expiries:
+        chain = sim.get_option_chain(symbol, expiry)
+        chains[expiry] = chain.get("strikes", [])
+        if atm_strike is None:
+            atm_strike = chain.get("atm_strike")
+            underlying_ltp = chain.get("underlying_ltp")
+
+    return {
+        "symbol": symbol,
+        "underlyingLtp": underlying_ltp,
+        "atmStrike": atm_strike,
+        "availableExpiries": expiries,
+        "chains": chains,
+    }     
     
 
 
