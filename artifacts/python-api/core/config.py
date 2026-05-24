@@ -16,7 +16,6 @@ Usage in any file:
     print(settings.fyers_app_id)
 """
 
-from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,9 +34,11 @@ class Settings(BaseSettings):
 
     # PostgreSQL connection string
     # Example: postgresql://postgres:postgres@localhost:5432/options_trader
-    # database_url: str
-    database_password: str
-    safe_password: str
+    database_url: str
+
+    # Optional: local dev only — used to construct DB URL if set
+    database_password: str | None = None
+    safe_password: str | None = None
 
     # Fyers credentials — optional, enables live market data
     fyers_app_id: str | None = None
@@ -53,12 +54,6 @@ class Settings(BaseSettings):
         case_sensitive=False,   # DATABASE_URL and database_url both work
     )
 
-    @computed_field
-    @property
-    def database_url(self) -> str:
-        """Construct the database URL using the password from .env."""
-        return f"postgresql://postgres:{self.safe_password}@localhost:5432/options_trader"
-    
     @property
     def is_live_mode(self) -> bool:
         """True if both Fyers credentials are configured."""
