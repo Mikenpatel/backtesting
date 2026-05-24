@@ -2,14 +2,11 @@ import { useState, useEffect } from "react";
 import {
   useGetMarketQuote,
   getGetMarketQuoteQueryKey,
-  useGetOptionChain,
-  getGetOptionChainQueryKey,
-  useGetExpiries,
-  getGetExpiriesQueryKey,
 } from "@workspace/api-client-react";
-import { TrendingUp, TrendingDown, Radio, FlaskConical, ShieldAlert } from "lucide-react";
+import type { GetMarketQuoteParams } from "@workspace/api-client-react";
+import { Radio, FlaskConical, ShieldAlert, TrendingUp, TrendingDown, Minus } from "lucide-react";
 
-type Symbol = "NIFTY" | "BANKNIFTY" | "FINNIFTY";
+type IndexSymbol = GetMarketQuoteParams["symbol"] | "SENSEX";
 
 interface MarketModeInfo {
   mode: "live" | "blocked" | "simulator";
@@ -20,17 +17,13 @@ interface MarketModeInfo {
 function useMarketMode() {
   const [info, setInfo] = useState<MarketModeInfo | null>(null);
   useEffect(() => {
-    fetch("/api/market/mode")
-      .then((r) => r.json())
-      .then((d) => setInfo(d as MarketModeInfo))
-      .catch(() => null);
-    // Re-check every 30s so badge updates once a live call succeeds or starts failing
-    const id = setInterval(() => {
+    const load = () =>
       fetch("/api/market/mode")
         .then((r) => r.json())
         .then((d) => setInfo(d as MarketModeInfo))
         .catch(() => null);
-    }, 30_000);
+    load();
+    const id = setInterval(load, 30_000);
     return () => clearInterval(id);
   }, []);
   return info;
@@ -38,222 +31,224 @@ function useMarketMode() {
 
 function ModeBadge({ info }: { info: MarketModeInfo | null }) {
   if (!info) return null;
-
   if (info.mode === "live") {
     return (
-      <span
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-        title={info.reason}
-      >
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" title={info.reason}>
         <Radio size={11} className="animate-pulse" />
         LIVE · Fyers
       </span>
     );
   }
-
   if (info.mode === "blocked") {
     return (
-      <span
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/25 cursor-help"
-        title={info.reason}
-      >
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/25 cursor-help" title={info.reason}>
         <ShieldAlert size={11} />
         IP BLOCKED · Simulator
       </span>
     );
   }
-
   return (
-    <span
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/25"
-      title={info.reason}
-    >
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/25" title={info.reason}>
       <FlaskConical size={11} />
       SIMULATOR
     </span>
   );
 }
 
-function QuoteCard({ symbol }: { symbol: Symbol }) {
-  const { data: quote } = useGetMarketQuote(
-    { symbol },
-    { query: { queryKey: getGetMarketQuoteQueryKey({ symbol }), refetchInterval: 15000 } },
-  );
+const REFRESH = { query: { refetchInterval: 5_000 } } as const;
 
-  if (!quote) return <div className="bg-card border border-card-border rounded-md p-4 animate-pulse h-28" />;
+const INDEX_META: { symbol: IndexSymbol; label: string; desc: string }[] = [
+  { symbol: "NIFTY",     label: "NIFTY 50",       desc: "NSE Benchmark · Lot 75" },
+  { symbol: "BANKNIFTY", label: "NIFTY BANK",      desc: "Banking Index · Lot 15" },
+  { symbol: "FINNIFTY",  label: "NIFTY FIN SVC",   desc: "Financial Services · Lot 65" },
+  { symbol: "SENSEX",    label: "SENSEX",           desc: "BSE Benchmark · Lot 10" },
+];
 
-  const isPositive = quote.change >= 0;
+const FNO_STOCKS = [
+  { symbol: "RELIANCE",   sector: "Energy" },
+  { symbol: "TCS",        sector: "IT" },
+  { symbol: "INFY",       sector: "IT" },
+  { symbol: "HDFCBANK",   sector: "Banking" },
+  { symbol: "ICICIBANK",  sector: "Banking" },
+  { symbol: "SBIN",       sector: "PSU Bank" },
+  { symbol: "BAJFINANCE", sector: "NBFC" },
+  { symbol: "AXISBANK",   sector: "Banking" },
+  { symbol: "WIPRO",      sector: "IT" },
+  { symbol: "TECHM",      sector: "IT" },
+  { symbol: "MARUTI",     sector: "Auto" },
+  { symbol: "TATAMOTORS", sector: "Auto" },
+  { symbol: "ADANIENT",   sector: "Conglomerate" },
+  { symbol: "HINDUNILVR", sector: "FMCG" },
+  { symbol: "KOTAKBANK",  sector: "Banking" },
+  { symbol: "LT",         sector: "Infra" },
+];
 
+function ChangeCell({ change, changePct }: { change?: number; changePct?: number }) {
+  if (change == null || changePct == null) return <span className="text-muted-foreground">—</span>;
+  const up = change >= 0;
+  const cls = up ? "profit" : "loss";
+  const Icon = up ? TrendingUp : change === 0 ? Minus : TrendingDown;
   return (
-    <div className="bg-card border border-card-border rounded-md p-4">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{quote.symbol}</span>
-        {isPositive ? <TrendingUp size={14} className="profit" /> : <TrendingDown size={14} className="loss" />}
-      </div>
-      <div className="text-2xl font-mono-num font-semibold mb-1">{quote.ltp.toLocaleString("en-IN")}</div>
-      <div className={`text-sm font-mono-num ${isPositive ? "profit" : "loss"}`}>
-        {isPositive ? "+" : ""}{quote.change.toFixed(2)} ({isPositive ? "+" : ""}{quote.changePct.toFixed(2)}%)
-      </div>
-      <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
-        <span>O: <span className="text-foreground font-mono-num">{quote.open.toLocaleString("en-IN")}</span></span>
-        <span>H: <span className="text-foreground font-mono-num">{quote.high.toLocaleString("en-IN")}</span></span>
-        <span>L: <span className="text-foreground font-mono-num">{quote.low.toLocaleString("en-IN")}</span></span>
-      </div>
+    <div className={`flex items-center gap-1 justify-end ${cls}`}>
+      <Icon size={11} />
+      <span className="font-mono-num text-xs">
+        {up ? "+" : ""}{change.toFixed(2)}
+      </span>
+      <span className="font-mono-num text-xs opacity-75">
+        ({up ? "+" : ""}{changePct.toFixed(2)}%)
+      </span>
     </div>
   );
 }
 
+function IndexRow({ symbol, label, desc }: { symbol: IndexSymbol; label: string; desc: string }) {
+  const sym = symbol as GetMarketQuoteParams["symbol"];
+  const { data } = useGetMarketQuote(
+    { symbol: sym },
+    { query: { queryKey: getGetMarketQuoteQueryKey({ symbol: sym }), refetchInterval: 5_000 } },
+  );
+  const up = (data?.change ?? 0) >= 0;
+  return (
+    <tr className="border-b border-border/60 hover:bg-muted/20 transition-colors">
+      <td className="px-4 py-3.5">
+        <div className="font-semibold text-foreground text-sm">{label}</div>
+        <div className="text-xs text-muted-foreground mt-0.5">{desc}</div>
+      </td>
+      <td className="px-4 py-3.5 text-right">
+        <span className={`font-mono-num font-semibold text-base ${data ? (up ? "profit" : "loss") : "text-foreground"}`}>
+          {data?.ltp?.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "—"}
+        </span>
+      </td>
+      <td className="px-4 py-3.5 text-right">
+        <ChangeCell change={data?.change} changePct={data?.changePct} />
+      </td>
+      <td className="px-4 py-3.5 text-right font-mono-num text-xs text-muted-foreground">
+        {data?.high?.toLocaleString("en-IN") ?? "—"}
+      </td>
+      <td className="px-4 py-3.5 text-right font-mono-num text-xs text-muted-foreground">
+        {data?.low?.toLocaleString("en-IN") ?? "—"}
+      </td>
+    </tr>
+  );
+}
+
+function VixRow() {
+  const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const [vix, setVix] = useState<number | null>(null);
+  useEffect(() => {
+    const load = () =>
+      fetch(`${BASE}/api/market/mode`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (typeof d.vix === "number") setVix(d.vix);
+        })
+        .catch(() => null);
+    load();
+    const id = setInterval(load, 10_000);
+    return () => clearInterval(id);
+  }, [BASE]);
+  const cls = vix == null ? "text-muted-foreground" : vix > 20 ? "loss" : vix > 15 ? "text-yellow-400" : "profit";
+  return (
+    <tr className="border-b border-border/60 hover:bg-muted/20 transition-colors">
+      <td className="px-4 py-3.5">
+        <div className="font-semibold text-foreground text-sm">India VIX</div>
+        <div className="text-xs text-muted-foreground mt-0.5">Volatility Index · Fear gauge</div>
+      </td>
+      <td className="px-4 py-3.5 text-right">
+        <span className={`font-mono-num font-semibold text-base ${cls}`}>
+          {vix?.toFixed(2) ?? "—"}
+        </span>
+      </td>
+      <td className="px-4 py-3.5 text-right text-muted-foreground text-xs">—</td>
+      <td className="px-4 py-3.5 text-right text-muted-foreground text-xs">—</td>
+      <td className="px-4 py-3.5 text-right text-muted-foreground text-xs">—</td>
+    </tr>
+  );
+}
+
 export default function Market() {
-  const [selectedSymbol, setSelectedSymbol] = useState<Symbol>("NIFTY");
-  const modeInfo = useMarketMode();
-
-  const { data: expiries } = useGetExpiries(
-    { symbol: selectedSymbol },
-    { query: { queryKey: getGetExpiriesQueryKey({ symbol: selectedSymbol }) } },
-  );
-
-  const [selectedExpiry, setSelectedExpiry] = useState<string>("");
-  const activeExpiry = selectedExpiry || expiries?.expiries[0] || "";
-
-  const { data: chain, isLoading: chainLoading } = useGetOptionChain(
-    { symbol: selectedSymbol, expiry: activeExpiry },
-    {
-      query: {
-        queryKey: getGetOptionChainQueryKey({ symbol: selectedSymbol, expiry: activeExpiry }),
-        enabled: !!activeExpiry,
-        refetchInterval: 15000,
-      },
-    },
-  );
-
-  const niftyQuote = useGetMarketQuote({ symbol: "NIFTY" }, { query: { queryKey: getGetMarketQuoteQueryKey({ symbol: "NIFTY" }), refetchInterval: 15000 } });
-
-  const subtitle = modeInfo?.mode === "live"
-    ? "Live NSE/BSE data via Fyers API — refreshes every 15 seconds"
-    : "Simulated NSE market data — refreshes every 15 seconds";
+  const mode = useMarketMode();
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-start justify-between">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Market</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Live indices &amp; F&amp;O watchlist</p>
         </div>
-        <ModeBadge info={modeInfo} />
+        <ModeBadge info={mode} />
       </div>
 
-      {/* VIX bar */}
-      <div className="flex items-center gap-3 py-2 px-4 bg-card border border-card-border rounded-md text-sm">
-        <span className="text-xs text-muted-foreground uppercase">India VIX</span>
-        <span className={`font-mono-num font-semibold ${(niftyQuote.data?.vix ?? 0) > 20 ? "loss" : (niftyQuote.data?.vix ?? 0) > 15 ? "text-yellow-400" : "profit"}`}>
-          {niftyQuote.data?.vix.toFixed(2) ?? "—"}
-        </span>
-        <span className="text-xs text-muted-foreground ml-2">
-          {(niftyQuote.data?.vix ?? 0) > 20 ? "High volatility" : (niftyQuote.data?.vix ?? 0) > 15 ? "Moderate volatility" : "Low volatility"}
-        </span>
-      </div>
-
-      {/* Quote cards */}
-      <div className="grid grid-cols-3 gap-4">
-        <QuoteCard symbol="NIFTY" />
-        <QuoteCard symbol="BANKNIFTY" />
-        <QuoteCard symbol="FINNIFTY" />
-      </div>
-
-      {/* Option Chain */}
-      <div className="bg-card border border-card-border rounded-md">
-        <div className="px-4 py-3 border-b border-border flex items-center gap-4 flex-wrap">
-          <span className="text-sm font-medium">Option Chain</span>
-
-          <div className="flex gap-1">
-            {(["NIFTY", "BANKNIFTY", "FINNIFTY"] as Symbol[]).map((sym) => (
-              <button
-                key={sym}
-                onClick={() => { setSelectedSymbol(sym); setSelectedExpiry(""); }}
-                className={`px-3 py-1 text-xs rounded transition-colors ${selectedSymbol === sym ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                {sym}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex gap-1">
-            {(expiries?.expiries ?? []).slice(0, 5).map((exp) => (
-              <button
-                key={exp}
-                onClick={() => setSelectedExpiry(exp)}
-                className={`px-2 py-1 text-xs rounded font-mono-num transition-colors ${activeExpiry === exp ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                {exp}
-              </button>
-            ))}
-          </div>
-
-          {chain && (
-            <span className="ml-auto text-xs text-muted-foreground">
-              Spot: <span className="text-foreground font-mono-num">{chain.underlyingLtp.toLocaleString("en-IN")}</span>
-              &nbsp;·&nbsp;ATM: <span className="text-primary font-mono-num">{chain.atmStrike.toLocaleString("en-IN")}</span>
-            </span>
-          )}
+      {/* NSE / BSE Indices */}
+      <div className="bg-card border border-card-border rounded-md overflow-hidden">
+        <div className="px-4 py-3 border-b border-border">
+          <span className="text-sm font-medium">Indices</span>
+          <span className="ml-2 text-xs text-muted-foreground">auto-refreshes every 5 s</span>
         </div>
-
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+          <table className="w-full">
             <thead>
-              <tr className="border-b border-border text-muted-foreground">
-                <th colSpan={5} className="py-2 text-center text-primary text-xs font-medium border-r border-border">CALLS</th>
-                <th className="py-2 px-4 text-center font-bold text-foreground">STRIKE</th>
-                <th colSpan={5} className="py-2 text-center text-red-400 text-xs font-medium border-l border-border">PUTS</th>
-              </tr>
-              <tr className="border-b border-border text-muted-foreground uppercase tracking-wider">
-                <th className="px-2 py-2 text-right">OI</th>
-                <th className="px-2 py-2 text-right">Vol</th>
-                <th className="px-2 py-2 text-right">IV%</th>
-                <th className="px-2 py-2 text-right">Delta</th>
-                <th className="px-2 py-2 text-right border-r border-border">LTP</th>
-                <th className="px-4 py-2 text-center font-bold text-foreground">Strike</th>
-                <th className="px-2 py-2 text-left border-l border-border">LTP</th>
-                <th className="px-2 py-2 text-left">Delta</th>
-                <th className="px-2 py-2 text-left">IV%</th>
-                <th className="px-2 py-2 text-left">Vol</th>
-                <th className="px-2 py-2 text-left">OI</th>
+              <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wider">
+                <th className="px-4 py-2.5 text-left">Instrument</th>
+                <th className="px-4 py-2.5 text-right">LTP</th>
+                <th className="px-4 py-2.5 text-right">Change</th>
+                <th className="px-4 py-2.5 text-right">High</th>
+                <th className="px-4 py-2.5 text-right">Low</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border/50">
-              {chainLoading && (
-                <tr><td colSpan={11} className="py-6 text-center text-muted-foreground">Loading option chain...</td></tr>
-              )}
-              {(chain?.strikes ?? []).map((row) => {
-                const isAtm = row.strike === chain?.atmStrike;
-                return (
-                  <tr
-                    key={row.strike}
-                    className={`transition-colors ${isAtm ? "bg-primary/5 font-medium" : "hover:bg-muted/20"}`}
-                  >
-                    <td className="px-2 py-1.5 text-right font-mono-num text-muted-foreground">{(row.callOi / 1000).toFixed(0)}K</td>
-                    <td className="px-2 py-1.5 text-right font-mono-num text-muted-foreground">{(row.callVolume / 1000).toFixed(0)}K</td>
-                    <td className="px-2 py-1.5 text-right font-mono-num">{row.callIv.toFixed(1)}</td>
-                    <td className="px-2 py-1.5 text-right font-mono-num text-primary">{row.callDelta.toFixed(3)}</td>
-                    <td className="px-2 py-1.5 text-right font-mono-num text-primary border-r border-border font-medium">
-                      {row.callLtp.toFixed(2)}
-                    </td>
-                    <td className={`px-4 py-1.5 text-center font-mono-num font-bold ${isAtm ? "text-primary" : "text-foreground"}`}>
-                      {row.strike.toLocaleString("en-IN")}
-                      {isAtm && <span className="ml-1 text-xs text-primary">(ATM)</span>}
-                    </td>
-                    <td className="px-2 py-1.5 text-left font-mono-num text-red-400 border-l border-border font-medium">
-                      {row.putLtp.toFixed(2)}
-                    </td>
-                    <td className="px-2 py-1.5 text-left font-mono-num text-red-400">{row.putDelta.toFixed(3)}</td>
-                    <td className="px-2 py-1.5 text-left font-mono-num">{row.putIv.toFixed(1)}</td>
-                    <td className="px-2 py-1.5 text-left font-mono-num text-muted-foreground">{(row.putVolume / 1000).toFixed(0)}K</td>
-                    <td className="px-2 py-1.5 text-left font-mono-num text-muted-foreground">{(row.putOi / 1000).toFixed(0)}K</td>
-                  </tr>
-                );
-              })}
+            <tbody>
+              {INDEX_META.map((m) => (
+                <IndexRow key={m.symbol} {...m} />
+              ))}
+              <VixRow />
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* F&O Stock Watchlist */}
+      <div className="bg-card border border-card-border rounded-md overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <span className="text-sm font-medium">Top F&amp;O Stocks</span>
+          {mode && mode.mode !== "live" && (
+            <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded">
+              Prices require Fyers live connection
+            </span>
+          )}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wider">
+                <th className="px-4 py-2.5 text-left">Symbol</th>
+                <th className="px-4 py-2.5 text-left">Sector</th>
+                <th className="px-4 py-2.5 text-right">LTP</th>
+                <th className="px-4 py-2.5 text-right">Change</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/40">
+              {FNO_STOCKS.map((stock) => (
+                <tr key={stock.symbol} className="hover:bg-muted/20 transition-colors">
+                  <td className="px-4 py-3 font-semibold text-sm text-foreground">{stock.symbol}</td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground">{stock.sector}</td>
+                  <td className="px-4 py-3 text-right font-mono-num text-muted-foreground text-sm">—</td>
+                  <td className="px-4 py-3 text-right text-muted-foreground text-xs">—</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {mode && mode.mode !== "live" && (
+          <div className="px-4 py-3 border-t border-border text-xs text-muted-foreground">
+            Connect your Fyers account and set <code className="bg-secondary px-1 rounded">FYERS_APP_ID</code> + <code className="bg-secondary px-1 rounded">FYERS_ACCESS_TOKEN</code> in the server <code className="bg-secondary px-1 rounded">.env</code> to stream live stock prices.
+          </div>
+        )}
+      </div>
+
+      {/* Market Hours Note */}
+      <div className="text-xs text-muted-foreground px-1">
+        NSE &amp; BSE market hours: <span className="text-foreground font-medium">09:15 – 15:30 IST</span> · Monday to Friday · Prices in simulator mode are Black-Scholes estimates seeded daily.
       </div>
     </div>
   );

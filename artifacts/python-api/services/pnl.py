@@ -97,21 +97,21 @@ def compute_unrealized_pnl(legs: list[TradeLeg]) -> float:
 def format_leg(leg: TradeLeg, closed: bool = False) -> dict:
     """
     Convert a TradeLeg DB row to the API response shape.
-    For closed trades, uses exit_price instead of fetching current price.
+
+    Uses only values already stored in the DB — no live market calls here.
+    Live prices are written to leg.current_price by the /trades/refresh-pnl
+    endpoint, which should be called periodically.
+
+    Priority:
+      closed trade → exit_price (if recorded) → current_price → entry_price
+      open trade   → current_price (last refresh) → entry_price
     """
     if closed and leg.exit_price is not None:
         current_price = float(leg.exit_price)
+    elif leg.current_price is not None:
+        current_price = float(leg.current_price)
     else:
-        try:
-            underlying = resolve_symbol(leg.symbol)
-            current_price = get_current_option_price(
-                underlying,
-                float(leg.strike),
-                leg.option_type,
-                leg.expiry,
-            )
-        except Exception:
-            current_price = float(leg.entry_price)
+        current_price = float(leg.entry_price)
 
     return {
         "id":           leg.id,

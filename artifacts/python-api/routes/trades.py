@@ -277,12 +277,27 @@ def close_trade(trade_id: int, db: Session = Depends(get_db)):
         timestamp=datetime.utcnow(),
     ))
 
-    # Update daily_pnl record if it exists
+    # Update or create a daily_pnl record for this trade
     daily_record = db.query(DailyPnl).filter(DailyPnl.trade_id == trade_id).first()
     if daily_record:
         daily_record.realized_pnl = realized_pnl
         daily_record.return_pct   = return_pct
         daily_record.notes        = f"Closed at spot {exit_ltp}. P&L: ₹{realized_pnl:.2f}"
+    else:
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        db.add(DailyPnl(
+            date=today_str,
+            underlying=trade.underlying,
+            strategy_type=trade.strategy_type,
+            strategy_frequency=trade.strategy_frequency,
+            trade_id=trade.id,
+            net_premium=float(trade.net_premium or 0),
+            realized_pnl=realized_pnl,
+            capital_deployed=float(trade.capital_deployed or 0),
+            return_pct=return_pct,
+            brokerage_cost=0,
+            notes=f"Manual close at spot {exit_ltp}. P&L: ₹{realized_pnl:.2f}",
+        ))
 
     db.commit()
     db.refresh(trade)
@@ -315,9 +330,17 @@ def refresh_pnl(db: Session = Depends(get_db)):
     for trade in open_trades:
         legs = db.query(TradeLeg).filter(TradeLeg.trade_id == trade.id).all()
         try:
-            pnl                = compute_unrealized_pnl(legs)
-            trade.unrealized_pnl = pnl
-            refreshed          += 1
+            pnl = 0.0
+            for leg in legs:
+                underlying    = resolve_symbol(leg.symbol)
+                price         = get_current_option_price(underlying, float(leg.strike), leg.option_type, leg.expiry)
+                leg.current_price = price          # persist so format_leg is instant
+                leg_pnl       = (price - float(leg.entry_price)) * leg.quantity * leg.lot_size
+                if leg.action == "SELL":
+                    leg_pnl   = -leg_pnl
+                pnl           += leg_pnl
+            trade.unrealized_pnl = round(pnl, 2)
+            refreshed += 1
         except Exception as e:
             logger.warning(f"Could not refresh P&L for trade {trade.id}: {e}")
 

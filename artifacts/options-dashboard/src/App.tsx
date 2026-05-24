@@ -6,7 +6,6 @@ import Layout from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
 import Trades from "@/pages/Trades";
 import NewTrade from "@/pages/NewTrade";
-import Strategies from "@/pages/Strategies";
 import Market from "@/pages/Market";
 import PnlStatement from "@/pages/PnlStatement";
 import StrategyBuilder from "@/pages/StrategyBuilder";
@@ -29,7 +28,6 @@ function Router() {
         <Route path="/trades/new" component={NewTrade} />
         <Route path="/trades" component={Trades} />
         <Route path="/chain-builder" component={StrategyBuilder} />
-        <Route path="/strategies" component={Strategies} />
         <Route path="/market" component={Market} />
         <Route path="/pnl" component={PnlStatement} />
         <Route component={NotFound} />

@@ -424,7 +424,11 @@ export default function StrategyBuilder() {
                   return (
                     <tr
                       key={row.strike}
-                      className={`border-b border-border/40 ${isAtm ? "bg-primary/5" : "hover:bg-muted/20"} transition-colors`}
+                      className={`border-b border-border/40 transition-colors ${
+                        isAtm
+                          ? "bg-amber-500/10 border-l-2 border-l-amber-500/60"
+                          : "hover:bg-muted/20"
+                      }`}
                     >
                       {/* Call columns — reversed so LTP is closest to strike */}
                       {[...CHAIN_COLS].reverse().map((col) => (
@@ -445,9 +449,13 @@ export default function StrategyBuilder() {
                       </td>
 
                       {/* Strike */}
-                      <td className={`px-4 py-2 text-center font-mono-num font-bold whitespace-nowrap ${isAtm ? "text-primary" : "text-foreground"}`}>
+                      <td className={`px-4 py-2 text-center font-mono-num font-bold whitespace-nowrap ${isAtm ? "text-amber-400" : "text-foreground"}`}>
                         {row.strike.toLocaleString("en-IN")}
-                        {isAtm && <span className="ml-1 text-[9px] text-muted-foreground font-normal">ATM</span>}
+                        {isAtm && (
+                          <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40 uppercase tracking-wider">
+                            ATM
+                          </span>
+                        )}
                       </td>
 
                       {/* PE add buttons */}
