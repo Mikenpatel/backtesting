@@ -100,7 +100,7 @@ def get_quote(symbol: str) -> dict:
     }
 
 
-def get_expiries(symbol: str) -> list[str]:
+def get_expiries(symbol: str, number: int = 6) -> list[str]:
     """
     Fetch available expiry dates for an underlying from Fyers option chain.
 
@@ -117,11 +117,13 @@ def get_expiries(symbol: str) -> list[str]:
         "symbol": fyers_symbol,
         "strikecount": 1,   # minimal — we only want expiries
     })
+    # print(response)
 
     if response.get("s") != "ok":
         raise RuntimeError(f"Fyers optionchain API error: {response}")
 
-    expiry_data = response.get("d", {}).get("expiryData", [])
+    expiry_data = response.get("data", {}).get("expiryData", [])
+    # print(expiry_data)
     expiries = []
     for item in expiry_data:
         # Fyers provides expiry as unix timestamp
@@ -130,10 +132,9 @@ def get_expiries(symbol: str) -> list[str]:
             dt = datetime.fromtimestamp(int(ts))
             expiries.append(_format_expiry(dt))
 
-    return expiries[:6]   # return at most 6 upcoming expiries
+    return expiries[:number]   # return at most 6 upcoming expiries
 
-
-def get_option_chain(symbol: str, expiry: str | None) -> dict:
+def get_option_chain(symbol: str, expiry_epoch_time: str | None) -> dict:
     """
     Fetch the full option chain for a given underlying and expiry.
 
@@ -154,9 +155,8 @@ def get_option_chain(symbol: str, expiry: str | None) -> dict:
     }
 
     # If specific expiry requested, convert to unix timestamp
-    if expiry:
-        expiry_dt = _parse_expiry(expiry)
-        # params["timestamp"] = str(int(expiry_dt.timestamp()))
+    if expiry_epoch_time:
+        params["timestamp"] = expiry_epoch_time
 
     response = client.optionchain(params)
 
@@ -170,7 +170,6 @@ def get_option_chain(symbol: str, expiry: str | None) -> dict:
     if not expiry_data_list:
         raise RuntimeError(f"No option chain data for {symbol}")
 
-    expiry_data = expiry_data_list[0]
     interval = get_strike_interval(symbol)
     atm_strike = round(underlying_ltp / interval) * interval
 
@@ -183,7 +182,6 @@ def get_option_chain(symbol: str, expiry: str | None) -> dict:
     # print(option_type)
     strike_map = {}
     for leg in option_chain: 
-        print(leg)
         option_type = leg.get("symbol", "")[-2:]
         strike = leg.get('strike_price')
         if strike not in strike_map: 
@@ -208,6 +206,44 @@ def get_option_chain(symbol: str, expiry: str | None) -> dict:
         "atm_strike": atm_strike,
         "strikes": strikes,
     }
+
+
+def get_multi_expiry_option_chains(symbol: str, count: int = 6) -> dict:
+
+    fyers_symbol = to_fyers(symbol)
+    client = get_fyers_client()
+
+    response = client.optionchain({
+        "symbol": fyers_symbol,
+        "strikecount": 1,   # minimal — we only want expiries
+    })
+
+    if response.get("s") != "ok":
+        raise RuntimeError(f"Fyers optionchain API error: {response}")
+
+    expiry_data = response.get("data", {}).get("expiryData", [])[:count]
+
+    expiries = [ i['date'] for i in expiry_data ]
+
+    options_chain = {}
+    for item in expiry_data: 
+        epoch_expiry_time = item.get("expiry")
+        print(f"epoch expiry time: {epoch_expiry_time}")
+        expiry_single_date = get_option_chain(symbol, epoch_expiry_time)
+        print(f"expiry data of single data, {expiry_single_date} ")
+        options_chain[item.get("date")] = expiry_single_date.get("strikes", []) 
+    
+    final_payload = {
+        "symbol": symbol,
+        "underlying_ltp": expiry_single_date.get("underlying_ltp"),
+         "atm_strike": expiry_single_date.get("atm_strike"),
+         "available_expiries": get_expiries(symbol, count),
+         "chains": options_chain
+        }
+    return final_payload
+
+
+
 
     # # Parse the options chain into our internal format
     # # Fyers returns a list of option legs, each with symbol name and values

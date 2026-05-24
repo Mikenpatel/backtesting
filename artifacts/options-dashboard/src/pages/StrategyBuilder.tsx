@@ -71,8 +71,8 @@ const CHAIN_COLS: ChainCol[] = [
   {
     key: "iv",
     header: "IV%",
-    callRender: (s) => (s.callIv * 100).toFixed(1) + "%",
-    putRender:  (s) => (s.putIv * 100).toFixed(1) + "%",
+    callRender: (s) => (s.callIv ?? 0* 100).toFixed(1) + "%",
+    putRender:  (s) => (s.putIv ?? 0* 100).toFixed(1) + "%",
     align: "right",
     callCls: "text-blue-400",
     putCls:  "text-blue-400",
@@ -80,8 +80,8 @@ const CHAIN_COLS: ChainCol[] = [
   {
     key: "delta",
     header: "Δ",
-    callRender: (s) => s.callDelta.toFixed(2),
-    putRender:  (s) => s.putDelta.toFixed(2),
+    callRender: (s) => (s.callDelta ?? 0).toFixed(2),
+    putRender:  (s) => (s.putDelta ?? 0).toFixed(2),
     align: "right",
     callCls: "text-muted-foreground",
     putCls:  "text-muted-foreground",
@@ -155,7 +155,8 @@ export default function StrategyBuilder() {
     { symbol },
     { query: { queryKey: getGetExpiriesQueryKey({ symbol }), refetchInterval: 60_000 } }
   );
-
+   
+  console.log(expiriesData)
   const expiries = expiriesData?.expiries ?? [];
 
   // Auto-select first expiry when symbol or expiry list changes

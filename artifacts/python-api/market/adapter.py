@@ -159,6 +159,23 @@ def get_option_chain(symbol: str, expiry: str) -> dict:
     return sim.get_option_chain(symbol, expiry)
 
 
+
+def get_multi_expiry_option_chain(symbol: str, expiry_count: int = 6) -> dict:
+    """
+    I will write this later
+    """
+    if settings.is_live_mode:
+        try: 
+            result = fyers_client.get_multi_expiry_option_chains(symbol, expiry_count)
+            _record_success()
+            return result
+        except Exception as e:
+            _record_failure(e)
+            logger.warning(f"Fyers get_option_chain failed for {symbol}: {e} — using simulator")
+    return {"msg": "We are running on simulated env"}     
+    
+
+
 def get_expiries(symbol: str) -> list[str]:
     """Get available expiry dates. Falls back to calculated dates from simulator."""
     if settings.is_live_mode:
