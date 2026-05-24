@@ -62,6 +62,16 @@ export interface OptionChain {
   strikes: OptionStrike[];
 }
 
+export type MultiOptionChainChains = { [key: string]: OptionStrike[] };
+
+export interface MultiOptionChain {
+  symbol: string;
+  underlyingLtp: number;
+  atmStrike: number;
+  availableExpiries: string[];
+  chains: MultiOptionChainChains;
+}
+
 export interface ExpiriesResponse {
   symbol: string;
   expiries: string[];
@@ -451,6 +461,20 @@ export type GetOptionChainSymbol =
   (typeof GetOptionChainSymbol)[keyof typeof GetOptionChainSymbol];
 
 export const GetOptionChainSymbol = {
+  NIFTY: "NIFTY",
+  BANKNIFTY: "BANKNIFTY",
+  FINNIFTY: "FINNIFTY",
+} as const;
+
+export type GetMultiOptionChainParams = {
+  symbol: GetMultiOptionChainSymbol;
+  count?: number;
+};
+
+export type GetMultiOptionChainSymbol =
+  (typeof GetMultiOptionChainSymbol)[keyof typeof GetMultiOptionChainSymbol];
+
+export const GetMultiOptionChainSymbol = {
   NIFTY: "NIFTY",
   BANKNIFTY: "BANKNIFTY",
   FINNIFTY: "FINNIFTY",
