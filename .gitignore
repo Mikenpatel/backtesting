@@ -56,5 +56,5 @@ Thumbs.db
 **/__pycache__/
 *.pyc
 
-# Python API log files
-artifacts/python-api/*.log
+# Log files
+*.log
