@@ -1,28 +1,30 @@
 r"""
-Step 5 - validate the agent's proposed fix before it can become a PR.
+Step 5 - apply and validate the agent's proposed edits before they can become a PR.
 
 Checks (stops at the first failing stage):
-  1. sanity  - agent said fixable, files exist in the app repo, content changed
-  2. diff    - build fix.diff locally (old file vs fixed file)
-  3. syntax  - every changed .yml/.yaml file must parse
+  1. sanity  - agent said fixable, files exist in the app repo,
+               every edit's "old" text is found exactly once
+  2. diff    - apply the edits to a copy and build fix.diff (old file vs fixed file)
+  3. syntax  - every changed .yml/.yaml file must still parse
 
 Policy rules (OPA) are not included yet; they plug in after the syntax check.
 
 Usage:
     python validate.py agent-output C:\path\to\app-repo
 
-Writes agent-output\fix.diff and agent-output\validation.json.
+Writes agent-output\fix.diff, agent-output\fixed\<files> and agent-output\validation.json.
+The app repo itself is never modified.
 Exit code 0 = PASS, 1 = FAIL (so Jenkins can use it later).
 """
 
 import difflib
 import json
+import re
 import sys
 from pathlib import Path
 
-import yaml
-
 MAX_FILE_BYTES = 500_000
+LINE_NO_PREFIX = re.compile(r"^\s*\d+: ?", re.M)     # "12: " as shown by the agent's read_file
 
 
 def read_keep_newlines(p: Path) -> str:
@@ -31,61 +33,88 @@ def read_keep_newlines(p: Path) -> str:
         return f.read()
 
 
-def match_style(original: str, new: str) -> str:
-    """Give the fixed file the same line endings and final newline as the original.
-    LLMs always answer with LF; without this every line of a CRLF file would show as changed."""
-    new = new.replace("\r\n", "\n")
-    if "\r\n" in original:
-        new = new.replace("\n", "\r\n")
-    nl = "\r\n" if "\r\n" in original else "\n"
-    if original.endswith(("\n", "\r\n")) and not new.endswith(nl):
-        new += nl
-    return new
+def write_keep_newlines(p: Path, text: str) -> None:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "w", encoding="utf-8", newline="") as f:
+        f.write(text)
 
 
-# ------------------------------------------------------------ 1. sanity
+# ------------------------------------------------------------ 1. sanity + apply edits
 
-def check_sanity(result: dict, app_root: Path) -> tuple[list[str], dict[str, tuple[str, str]]]:
+def apply_edit(text: str, old: str, new: str) -> tuple[str | None, str | None]:
+    """Replace `old` with `new` exactly once. Returns (new_text, error)."""
+    count = text.count(old)
+    if count == 0:
+        # common LLM mistake: it copied the "12: " prefixes from read_file
+        lines = old.splitlines()
+        if lines and all(LINE_NO_PREFIX.match(l) for l in lines):
+            stripped_old = LINE_NO_PREFIX.sub("", old)
+            stripped_new = LINE_NO_PREFIX.sub("", new)
+            if text.count(stripped_old) == 1:
+                return text.replace(stripped_old, stripped_new, 1), None
+        return None, "old text not found in the file"
+    if count > 1:
+        return None, f"old text appears {count} times (ambiguous)"
+    return text.replace(old, new, 1), None
+
+
+def check_and_apply(result: dict, app_root: Path) -> tuple[list[str], dict[str, tuple[str, str]]]:
     """Returns (errors, {path: (original, fixed)}) for the files that really change."""
     errors: list[str] = []
-    changes: dict[str, tuple[str, str]] = {}
-
     if result.get("fixable") is not True:
-        return ["agent did not propose a fix (fixable is not true)"], changes
+        return ["agent did not propose a fix (fixable is not true)"], {}
 
-    files = result.get("files") or []
-    if not files:
-        return ["agent said fixable but returned no files"], changes
+    edits = result.get("edits") or []
+    if not edits:
+        return ["agent said fixable but returned no edits"], {}
 
-    for f in files:
-        path, content = f.get("path"), f.get("content")
-        if not path or not isinstance(content, str):
-            errors.append(f"malformed file entry: {f!r:.100}")
+    originals: dict[str, str] = {}        # path -> original text (as on disk)
+    working: dict[str, str] = {}          # path -> text with LF endings, edits applied
+
+    for i, e in enumerate(edits, 1):
+        path, old, new = e.get("path"), e.get("old"), e.get("new")
+        label = f"edit {i} ({path})"
+        if not path or not isinstance(old, str) or not isinstance(new, str):
+            errors.append(f"{label}: malformed edit")
+            continue
+        if not old.strip():
+            errors.append(f"{label}: empty 'old' text")
             continue
 
-        target = (app_root / path).resolve()
-        if app_root not in target.parents:
-            errors.append(f"{path}: outside the app repo")
-            continue
-        if not target.is_file():
-            errors.append(f"{path}: does not exist in the app repo (new files are not allowed)")
-            continue
-        if target.stat().st_size > MAX_FILE_BYTES:
-            errors.append(f"{path}: file too large to handle")
-            continue
-        if not content.strip():
-            errors.append(f"{path}: proposed content is empty")
-            continue
+        key = Path(path).as_posix()
+        if key not in originals:
+            target = (app_root / path).resolve()
+            if app_root not in target.parents:
+                errors.append(f"{label}: outside the app repo")
+                continue
+            if not target.is_file():
+                errors.append(f"{label}: file does not exist in the app repo")
+                continue
+            if target.stat().st_size > MAX_FILE_BYTES:
+                errors.append(f"{label}: file too large")
+                continue
+            originals[key] = read_keep_newlines(target)
+            working[key] = originals[key].replace("\r\n", "\n")
 
-        original = read_keep_newlines(target)
-        fixed = match_style(original, content)
-        if fixed == original:
-            continue                      # agent returned it unchanged; ignore this file
-        changes[Path(path).as_posix()] = (original, fixed)
+        updated, err = apply_edit(working[key],
+                                  old.replace("\r\n", "\n"), new.replace("\r\n", "\n"))
+        if err:
+            errors.append(f"{label}: {err}")
+        else:
+            working[key] = updated
 
-    if not errors and not changes:
-        errors.append("proposed files are identical to the originals - nothing to fix")
-    return errors, changes
+    if errors:
+        return errors, {}
+
+    changes = {}
+    for key, text in working.items():
+        if "\r\n" in originals[key]:
+            text = text.replace("\n", "\r\n")         # restore Windows line endings
+        if text != originals[key]:
+            changes[key] = (originals[key], text)
+    if not changes:
+        return ["edits do not change anything"], {}
+    return [], changes
 
 
 # ------------------------------------------------------------ 2. diff
@@ -108,13 +137,25 @@ def build_diff(changes: dict[str, tuple[str, str]]) -> tuple[str, list[str], lis
 
 # ------------------------------------------------------------ 3. syntax
 
+def yaml_parser():
+    """PyYAML if installed, otherwise ruamel.yaml (pure Python, no compiler needed)."""
+    try:
+        import yaml
+        return lambda s: list(yaml.safe_load_all(s)), yaml.YAMLError
+    except ImportError:
+        from ruamel.yaml import YAML
+        from ruamel.yaml.error import YAMLError
+        return lambda s: list(YAML(typ="safe", pure=True).load_all(s)), YAMLError
+
+
 def check_syntax(changes: dict[str, tuple[str, str]]) -> list[str]:
+    parse, yaml_error = yaml_parser()
     errors = []
     for path, (_, new) in changes.items():
         if path.lower().endswith((".yml", ".yaml")):
             try:
-                list(yaml.safe_load_all(new))        # supports multi-document YAML too
-            except yaml.YAMLError as e:
+                parse(new)
+            except yaml_error as e:
                 errors.append(f"{path}: fixed file is still invalid YAML: {e}")
     return errors
 
@@ -143,14 +184,16 @@ def main() -> int:
     except (OSError, json.JSONDecodeError) as e:
         return finish("load", [f"cannot read result.json: {e}"])
 
-    # 1. sanity
-    errors, changes = check_sanity(result, app_root)
+    # 1. sanity + apply edits (in memory only)
+    errors, changes = check_and_apply(result, app_root)
     if errors:
         return finish("sanity", errors)
 
-    # 2. diff
+    # 2. diff + save fixed copies
     diff, added, removed = build_diff(changes)
     (out_dir / "fix.diff").write_text(diff, encoding="utf-8")
+    for path, (_, new) in changes.items():
+        write_keep_newlines(out_dir / "fixed" / path, new)
     report["changed_files"] = list(changes)
     report["diff_stats"] = {"added": len(added), "removed": len(removed)}
     print(diff)
