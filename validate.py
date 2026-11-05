@@ -12,7 +12,8 @@ Policy rules (OPA) are not included yet; they plug in after the syntax check.
 Usage:
     python validate.py agent-output C:\path\to\app-repo
 
-Writes agent-output\fix.diff, agent-output\fixed\<files> and agent-output\validation.json.
+Writes agent-output\fix.diff, agent-output\fixed\<files>, agent-output\original\<files>
+and agent-output\validation.json.
 The app repo itself is never modified.
 Exit code 0 = PASS, 1 = FAIL (so Jenkins can use it later).
 """
@@ -192,8 +193,9 @@ def main() -> int:
     # 2. diff + save fixed copies
     diff, added, removed = build_diff(changes)
     (out_dir / "fix.diff").write_text(diff, encoding="utf-8")
-    for path, (_, new) in changes.items():
+    for path, (old, new) in changes.items():
         write_keep_newlines(out_dir / "fixed" / path, new)
+        write_keep_newlines(out_dir / "original" / path, old)   # create_pr.py checks against it
     report["changed_files"] = list(changes)
     report["diff_stats"] = {"added": len(added), "removed": len(removed)}
     print(diff)
